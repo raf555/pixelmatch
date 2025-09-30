@@ -72,21 +72,12 @@ type rgba struct {
 	R, G, B, A uint32
 }
 
-func rgbaFromColor(c *rgba) (r, g, b, a float64) {
-	const x = 1.0 / 256.0
-	r = float64(c.R) * x
-	g = float64(c.G) * x
-	b = float64(c.B) * x
-	a = float64(c.A) * x
-	return
-}
-
-func MatchPixel(a, b image.Image, opts ...MatchOption) (int, error) {
+func MatchPixel(a, b image.Image, opts ...MatchOption) (diff int, err error) {
 	options := MatchOptions{
 		threshold:        0.1,
 		alpha:            0.1,
-		antiAliasedColor: color.RGBA{R: 255, G: 255},
-		diffColor:        color.RGBA{R: 255},
+		antiAliasedColor: color.RGBA{R: 255, G: 255, B: 0, A: 255},
+		diffColor:        color.RGBA{R: 255, G: 0, B: 0, A: 255},
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -99,19 +90,28 @@ func MatchPixel(a, b image.Image, opts ...MatchOption) (int, error) {
 	var out *image.RGBA
 	if options.writeTo != nil {
 		out = image.NewRGBA(a.Bounds())
+		defer func() {
+			if err == nil {
+				*options.writeTo = out
+			}
+		}()
 	}
-	aa := options.alpha / 255
-	if isIdentical(a, b) { // fast path if identical
+	aa := options.alpha
+
+	if isIdentical(a, b) {
 		if out != nil && !options.diffMask {
 			rect := a.Bounds()
-			aLine := make([]rgba, rect.Dx())
 			for y := rect.Min.Y; y < rect.Max.Y; y++ {
-				readLine(aLine, a, y)
-				for i := range aLine {
-					x := rect.Min.X + i
-					r, g, b, a := rgbaFromColor(&aLine[i])
-					v := uint8(blend(rgbaToY(r, g, b), a*aa))
-					out.SetRGBA(x, y, color.RGBA{R: v, G: v, B: v, A: 255})
+				for x := rect.Min.X; x < rect.Max.X; x++ {
+					r, g, b, aPix := a.At(x, y).RGBA()
+					rf := float64(r) / 257.0
+					gf := float64(g) / 257.0
+					bf := float64(b) / 257.0
+					af := float64(aPix) / 257.0
+
+					yVal := rf*0.29889531 + gf*0.58662247 + bf*0.11448223
+					val := uint8(255 + (yVal-255)*aa*af/255.0)
+					out.SetRGBA(x, y, color.RGBA{R: val, G: val, B: val, A: 255})
 				}
 			}
 		}
@@ -119,134 +119,100 @@ func MatchPixel(a, b image.Image, opts ...MatchOption) (int, error) {
 	}
 
 	maxDelta := 35215 * options.threshold * options.threshold
-	diff := 0
 
 	rect := a.Bounds()
-	var outLine []uint8
-	if out != nil {
-		outLine = make([]uint8, rect.Dx()*4)
-		for i := range outLine {
-			outLine[i] = 0xff
-		}
-	}
-
 	y := rect.Min.Y
 	ar := newImageLineReader(a, y)
 	br := newImageLineReader(b, y)
+
 	for ; ar.Next() && br.Next(); y++ {
 		aLine := ar.Line()
 		bLine := br.Line()
 
 		for i := range aLine {
-			delta := colorDelta(&aLine[i], &bLine[i], false)
 			x := rect.Min.X + i
+			pos := y*rect.Dx() + x
+			delta := colorDelta(&aLine[i], &bLine[i], pos, false)
+
 			if math.Abs(delta) > maxDelta {
 				if !options.includeAA && (isAntiAliased(ar, br, x, y) || isAntiAliased(br, ar, x, y)) {
 					if out != nil && !options.diffMask {
 						c := options.antiAliasedColor
-						d := outLine[i*4 : i*4+4 : i*4+4]
-						d[0] = c.R
-						d[1] = c.G
-						d[2] = c.B
+						out.SetRGBA(x, y, c)
 					}
 				} else {
 					if out != nil {
 						if delta < 0 && options.diffColorAlt != nil {
 							c := *options.diffColorAlt
-							d := outLine[i*4 : i*4+4 : i*4+4]
-							d[0] = c.R
-							d[1] = c.G
-							d[2] = c.B
+							out.SetRGBA(x, y, c)
 						} else {
 							c := options.diffColor
-							d := outLine[i*4 : i*4+4 : i*4+4]
-							d[0] = c.R
-							d[1] = c.G
-							d[2] = c.B
+							out.SetRGBA(x, y, c)
 						}
 					}
 					diff++
 				}
-			} else {
-				if out != nil && !options.diffMask {
-					r, g, b, a := rgbaFromColor(&aLine[i])
-					v := uint8(blend(rgbaToY(r, g, b), aa*a))
-					d := outLine[i*4 : i*4+4 : i*4+4]
-					d[0] = v
-					d[1] = v
-					d[2] = v
-				}
+			} else if out != nil && !options.diffMask {
+				r, g, b, aPix := aLine[i].R, aLine[i].G, aLine[i].B, aLine[i].A
+				rf := float64(r) / 257.0
+				gf := float64(g) / 257.0
+				bf := float64(b) / 257.0
+				af := float64(aPix) / 257.0
+
+				yVal := rf*0.29889531 + gf*0.58662247 + bf*0.11448223
+				val := uint8(255 + (yVal-255)*aa*af/255.0)
+				out.SetRGBA(x, y, color.RGBA{R: val, G: val, B: val, A: 255})
 			}
 		}
-		if out != nil {
-			copy(out.Pix[out.PixOffset(rect.Min.X, y):], outLine)
-		}
-	}
-
-	if options.writeTo != nil {
-		*options.writeTo = out
 	}
 
 	return diff, nil
 }
 
-func colorDelta(a, b *rgba, yOnly bool) float64 {
-	if a.A == b.A && a.R == b.R && a.G == b.G && a.B == b.B {
+func checkerboardBackground(pos int) (float64, float64, float64) {
+	rb := float64(48 + 159*(pos%2))
+	gb := float64(48 + 159*((int(float64(pos)/1.618033988749895))%2))
+	bb := float64(48 + 159*((int(float64(pos)/2.618033988749895))%2))
+	return rb, gb, bb
+}
+
+func colorDelta(a, b *rgba, pos int, yOnly bool) float64 {
+	dr := float64(a.R>>8) - float64(b.R>>8)
+	dg := float64(a.G>>8) - float64(b.G>>8)
+	db := float64(a.B>>8) - float64(b.B>>8)
+	da := float64(a.A>>8) - float64(b.A>>8)
+
+	if dr == 0 && dg == 0 && db == 0 && da == 0 {
 		return 0
 	}
-	ar, ag, ab, aa := rgbaFromColor(a)
-	if aa < 255 {
-		ar, ag, ab = blendRGBA(ar, ag, ab, aa)
+
+	if a.A < 0xffff || b.A < 0xffff {
+		rb, gb, bb := checkerboardBackground(pos)
+		dr = (float64(a.R>>8)*float64(a.A>>8) - float64(b.R>>8)*float64(b.A>>8) - rb*da) / 255.0
+		dg = (float64(a.G>>8)*float64(a.A>>8) - float64(b.G>>8)*float64(b.A>>8) - gb*da) / 255.0
+		db = (float64(a.B>>8)*float64(a.A>>8) - float64(b.B>>8)*float64(b.A>>8) - bb*da) / 255.0
 	}
 
-	br, bg, bb, ba := rgbaFromColor(b)
-	if ba < 255 {
-		br, bg, bb = blendRGBA(br, bg, bb, ba)
-	}
-
-	ya := rgbaToY(ar, ag, ab)
-	yb := rgbaToY(br, bg, bb)
-	y := ya - yb
+	y := dr*0.29889531 + dg*0.58662247 + db*0.11448223
 	if yOnly {
 		return y
 	}
-	i := rgbaToI(ar, ag, ab) - rgbaToI(br, bg, bb)
-	q := rgbaToQ(ar, ag, ab) - rgbaToQ(br, bg, bb)
+	i := dr*0.59597799 - dg*0.27417610 - db*0.32180189
+	q := dr*0.21147017 - dg*0.52261711 + db*0.31114694
+
 	delta := 0.5053*y*y + 0.299*i*i + 0.1957*q*q
-	if ya > yb {
+	if y > 0 {
 		return -delta
-	} else {
-		return delta
 	}
-}
-
-func blendRGBA(r, g, b, a float64) (float64, float64, float64) {
-	a /= 255
-	return blend(r, a), blend(g, a), blend(b, a)
-}
-
-func blend(c float64, a float64) float64 {
-	return 255 + (c-255)*a
-}
-
-func rgbaToY(r, g, b float64) float64 {
-	return r*0.29889531 + g*0.58662247 + b*0.11448223
-}
-
-func rgbaToI(r, g, b float64) float64 {
-	return r*0.59597799 - g*0.27417610 - b*0.32180189
-}
-
-func rgbaToQ(r, g, b float64) float64 {
-	return r*0.21147017 - g*0.52261711 + b*0.31114694
+	return delta
 }
 
 func isAntiAliased(a, b *imageLineReader, x1, y1 int) bool {
 	r := a.Bounds()
-	x0 := maxInt(x1-1, r.Min.X)
-	y0 := maxInt(y1-1, r.Min.Y)
-	x2 := minInt(x1+1, r.Max.X-1)
-	y2 := minInt(y1+1, r.Max.Y-1)
+	x0 := max(x1-1, r.Min.X)
+	y0 := max(y1-1, r.Min.Y)
+	x2 := min(x1+1, r.Max.X-1)
+	y2 := min(y1+1, r.Max.Y-1)
 	zeroes := 0
 	if x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2 {
 		zeroes = 1
@@ -261,7 +227,8 @@ func isAntiAliased(a, b *imageLineReader, x1, y1 int) bool {
 			if x == x1 && y == y1 {
 				continue
 			}
-			delta := colorDelta(c, a.At(x, y), true)
+			pos := y*r.Dx() + x
+			delta := colorDelta(c, a.At(x, y), pos, true)
 			if delta == 0 {
 				zeroes++
 				if zeroes > 2 {
@@ -288,10 +255,10 @@ func isAntiAliased(a, b *imageLineReader, x1, y1 int) bool {
 
 func hasManySiblings(img *imageLineReader, x1, y1 int) bool {
 	rect := img.Bounds()
-	x0 := maxInt(x1-1, rect.Min.X)
-	y0 := maxInt(y1-1, rect.Min.Y)
-	x2 := minInt(x1+1, rect.Max.X-1)
-	y2 := minInt(y1+1, rect.Max.Y-1)
+	x0 := max(x1-1, rect.Min.X)
+	y0 := max(y1-1, rect.Min.Y)
+	x2 := min(x1+1, rect.Max.X-1)
+	y2 := min(y1+1, rect.Max.Y-1)
 	zeroes := 0
 	if x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2 {
 		zeroes = 1
@@ -314,22 +281,6 @@ func hasManySiblings(img *imageLineReader, x1, y1 int) bool {
 		}
 	}
 	return false
-}
-
-func maxInt(a, b int) int {
-	if a < b {
-		return b
-	} else {
-		return a
-	}
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	} else {
-		return b
-	}
 }
 
 func isIdentical(a, b image.Image) bool {
@@ -371,10 +322,10 @@ func isIdentical(a, b image.Image) bool {
 func equals(pixA, pixB []uint8, strideA, strideB int, rect image.Rectangle) bool {
 	w := rect.Dx()
 	h := rect.Dy()
-	if w*h == len(pixA) && w*h == len(pixB) { // both is not sub-image
+	if w*h*4 == len(pixA) && w*h*4 == len(pixB) {
 		return bytes.Equal(pixA, pixB)
 	}
-	for y := 0; y < h; y++ {
+	for y := range h {
 		if !bytes.Equal(pixA[y*strideA:y*strideA+strideA], pixB[y*strideB:y*strideB+strideB]) {
 			return false
 		}

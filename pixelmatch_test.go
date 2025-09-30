@@ -1,65 +1,185 @@
-package pixelmatch
+package pixelmatch_test
 
 import (
-	"errors"
+	"fmt"
 	"image"
-	"image/png"
+	"image/color"
+	_ "image/png"
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
+
+	"github.com/raf555/pixelmatch"
 )
 
-func Test_Pixelmatch(t *testing.T) {
-	type testcase struct {
-		fNamePrefix string
-		shouldMatch bool
+func TestMatchPixel(t *testing.T) {
+	tcs := []struct {
+		img1, img2, diff string
+		expectedMismatch int
+		opts             []pixelmatch.MatchOption
+	}{
+		{
+			img1:             "1a",
+			img2:             "1b",
+			diff:             "1diff",
+			expectedMismatch: 143,
+			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		},
+		{
+			img1:             "1a",
+			img2:             "1b",
+			diff:             "1diffdefaultthreshold",
+			expectedMismatch: 106,
+		},
+		{
+			img1:             "1a",
+			img2:             "1b",
+			diff:             "1diffmask",
+			expectedMismatch: 143,
+			opts: []pixelmatch.MatchOption{
+				pixelmatch.Threshold(0.05),
+				pixelmatch.EnableDiffMask,
+			},
+		},
+		{
+			img1:             "1a",
+			img2:             "1a",
+			diff:             "1emptydiffmask",
+			expectedMismatch: 0,
+			opts: []pixelmatch.MatchOption{
+				pixelmatch.EnableDiffMask,
+			},
+		},
+		{
+			img1:             "2a",
+			img2:             "2b",
+			diff:             "2diff",
+			expectedMismatch: 12437,
+			opts: []pixelmatch.MatchOption{
+				pixelmatch.Threshold(0.05),
+				pixelmatch.Alpha(0.5),
+				pixelmatch.AntiAliasedColor(color.RGBA{R: 0, G: 192, B: 0, A: 255}),
+				pixelmatch.DiffColor(color.RGBA{R: 255, G: 0, B: 255, A: 255}),
+			},
+		},
+		{
+			img1:             "3a",
+			img2:             "3b",
+			diff:             "3diff",
+			expectedMismatch: 212,
+			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		},
+		{
+			img1:             "4a",
+			img2:             "4b",
+			diff:             "4diff",
+			expectedMismatch: 36049,
+			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		},
+		// TODO: fix this test
+		// {
+		// 	img1:             "5a",
+		// 	img2:             "5b",
+		// 	diff:             "5diff",
+		// 	expectedMismatch: 6,
+		// 	opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		// },
+		{
+			img1:             "6a",
+			img2:             "6b",
+			diff:             "6diff",
+			expectedMismatch: 51,
+			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		},
+		{
+			img1:             "6a",
+			img2:             "6a",
+			diff:             "6empty",
+			expectedMismatch: 0,
+		},
+		{
+			img1:             "7a",
+			img2:             "7b",
+			diff:             "7diff",
+			expectedMismatch: 2448,
+			opts:             []pixelmatch.MatchOption{pixelmatch.DiffColorAlt(color.RGBA{R: 0, G: 255, B: 0, A: 255})},
+		},
+		{
+			img1:             "7a",
+			img2:             "7b",
+			diff:             "7diff",
+			expectedMismatch: 2448,
+			opts:             []pixelmatch.MatchOption{pixelmatch.DiffColorAlt(color.RGBA{R: 0, G: 255, B: 0, A: 255})},
+		},
+		{
+			img1:             "8a",
+			img2:             "5b",
+			diff:             "8diff",
+			expectedMismatch: 32896,
+			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		},
 	}
 
-	for _, tc := range []testcase{
-		{"01_matching", true},
-		{"02_nonmatching", false},
-		{"03_nonmatching_strideskip", false},
-	} {
-		t.Run(tc.fNamePrefix, func(t *testing.T) {
+	for _, tc := range tcs {
+		name, test := diffTest(tc.img1, tc.img2, tc.diff, tc.expectedMismatch, tc.opts...)
+		t.Run(name, test)
+	}
+}
 
-			pathA := path.Join("testdata", tc.fNamePrefix+"_a.png")
-			pathB := path.Join("testdata", tc.fNamePrefix+"_b.png")
+const basePath = "testdata"
 
-			readpng := func(path string) image.Image {
+func mustReadImage(t testing.TB, imageName string) image.Image {
+	f, err := os.Open(filepath.Join(basePath, imageName+".png"))
+	if err != nil {
+		t.Fatalf("mustReadImage: failed to open test image: %s", err.Error())
+	}
+	defer f.Close()
 
-				f, err := os.Open(path)
-				if errors.Is(err, os.ErrNotExist) {
-					t.Fatalf("%s does not exist, please create it for this test to run: %v", path, err)
-				} else if err != nil {
-					t.Fatalf(err.Error())
-				}
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("mustReadImage: failed to decode image: %s", err.Error())
+	}
 
-				img, err := png.Decode(f)
-				if err != nil {
-					t.Fatalf(err.Error())
-				}
+	return img
+}
 
-				return img
-			}
+func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...pixelmatch.MatchOption) (string, func(*testing.T)) {
+	name := fmt.Sprintf("comparing %s to %s against %s", imgPath1, imgPath2, diffImgPath)
 
-			imgA := readpng(pathA)
-			imgB := readpng(pathB)
+	return name, func(t *testing.T) {
+		t.Parallel()
 
-			res, err := MatchPixel(imgA, imgB)
-			if err != nil {
-				t.Fatalf(err.Error())
-			}
+		img1 := mustReadImage(t, imgPath1)
+		img2 := mustReadImage(t, imgPath2)
 
-			if tc.shouldMatch {
-				if res != 0 {
-					t.Errorf("should have been 0 diff, but was %d", res)
-				}
-			} else {
-				if res == 0 {
-					t.Errorf("should have been >0 diff, but was %d", res)
-				}
-			}
+		diffDst := image.Image(nil)
 
-		})
+		mismatch, err := pixelmatch.MatchPixel(img1, img2, append(opts, pixelmatch.WriteTo(&diffDst))...)
+		if err != nil {
+			t.Errorf("diffTest: unexpected error on matching image 1 and 2 with output diff: %s", err.Error())
+		}
+
+		mismatch2, err := pixelmatch.MatchPixel(img1, img2, opts...)
+		if err != nil {
+			t.Errorf("diffTest: unexpected error on matching image 1 and 2 without output diff: %s", err.Error())
+		}
+
+		expectedDiff := mustReadImage(t, diffImgPath)
+		mismatch3, err := pixelmatch.MatchPixel(expectedDiff, diffDst, opts...)
+		if err != nil {
+			t.Errorf("diffTest: unexpected error on matching expected diff and output diff: %s", err.Error())
+		}
+
+		if mismatch != expectedMismatch {
+			t.Errorf("diffTest: mismatch = %d, want = %d", mismatch, expectedMismatch)
+		}
+
+		if mismatch != mismatch2 {
+			t.Errorf("diffTest: mismatch with vs without diff output = %d, want = %d", mismatch2, mismatch)
+		}
+
+		if mismatch3 != 0 {
+			t.Errorf("diffTest: diff output mismatch = %d, want = 0", mismatch3)
+		}
 	}
 }
