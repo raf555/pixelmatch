@@ -82,7 +82,7 @@ func TestMatchPixel(t *testing.T) {
 		// 	img2:             "5b",
 		// 	diff:             "5diff",
 		// 	expectedMismatch: 6,
-		// 	opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+		// 	opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithThreshold(0.05)},
 		// },
 		{
 			img1:             "6a",
