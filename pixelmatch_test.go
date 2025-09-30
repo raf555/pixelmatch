@@ -16,14 +16,14 @@ func TestMatchPixel(t *testing.T) {
 	tcs := []struct {
 		img1, img2, diff string
 		expectedMismatch int
-		opts             []pixelmatch.MatchOption
+		opts             []pixelmatch.MatchOptionFn
 	}{
 		{
 			img1:             "1a",
 			img2:             "1b",
 			diff:             "1diff",
 			expectedMismatch: 143,
-			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+			opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithThreshold(0.05)},
 		},
 		{
 			img1:             "1a",
@@ -36,9 +36,9 @@ func TestMatchPixel(t *testing.T) {
 			img2:             "1b",
 			diff:             "1diffmask",
 			expectedMismatch: 143,
-			opts: []pixelmatch.MatchOption{
-				pixelmatch.Threshold(0.05),
-				pixelmatch.EnableDiffMask,
+			opts: []pixelmatch.MatchOptionFn{
+				pixelmatch.WithThreshold(0.05),
+				pixelmatch.WithDiffMask(true),
 			},
 		},
 		{
@@ -46,8 +46,8 @@ func TestMatchPixel(t *testing.T) {
 			img2:             "1a",
 			diff:             "1emptydiffmask",
 			expectedMismatch: 0,
-			opts: []pixelmatch.MatchOption{
-				pixelmatch.EnableDiffMask,
+			opts: []pixelmatch.MatchOptionFn{
+				pixelmatch.WithDiffMask(true),
 			},
 		},
 		{
@@ -55,11 +55,11 @@ func TestMatchPixel(t *testing.T) {
 			img2:             "2b",
 			diff:             "2diff",
 			expectedMismatch: 12437,
-			opts: []pixelmatch.MatchOption{
-				pixelmatch.Threshold(0.05),
-				pixelmatch.Alpha(0.5),
-				pixelmatch.AntiAliasedColor(color.RGBA{R: 0, G: 192, B: 0, A: 255}),
-				pixelmatch.DiffColor(color.RGBA{R: 255, G: 0, B: 255, A: 255}),
+			opts: []pixelmatch.MatchOptionFn{
+				pixelmatch.WithThreshold(0.05),
+				pixelmatch.WithAlpha(0.5),
+				pixelmatch.WithAntiAliasedColor(color.RGBA{R: 0, G: 192, B: 0, A: 255}),
+				pixelmatch.WithDiffColor(color.RGBA{R: 255, G: 0, B: 255, A: 255}),
 			},
 		},
 		{
@@ -67,14 +67,14 @@ func TestMatchPixel(t *testing.T) {
 			img2:             "3b",
 			diff:             "3diff",
 			expectedMismatch: 212,
-			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+			opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithThreshold(0.05)},
 		},
 		{
 			img1:             "4a",
 			img2:             "4b",
 			diff:             "4diff",
 			expectedMismatch: 36049,
-			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+			opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithThreshold(0.05)},
 		},
 		// TODO: fix this test
 		// {
@@ -89,7 +89,7 @@ func TestMatchPixel(t *testing.T) {
 			img2:             "6b",
 			diff:             "6diff",
 			expectedMismatch: 51,
-			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+			opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithThreshold(0.05)},
 		},
 		{
 			img1:             "6a",
@@ -102,21 +102,14 @@ func TestMatchPixel(t *testing.T) {
 			img2:             "7b",
 			diff:             "7diff",
 			expectedMismatch: 2448,
-			opts:             []pixelmatch.MatchOption{pixelmatch.DiffColorAlt(color.RGBA{R: 0, G: 255, B: 0, A: 255})},
-		},
-		{
-			img1:             "7a",
-			img2:             "7b",
-			diff:             "7diff",
-			expectedMismatch: 2448,
-			opts:             []pixelmatch.MatchOption{pixelmatch.DiffColorAlt(color.RGBA{R: 0, G: 255, B: 0, A: 255})},
+			opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithDiffColorAlt(color.RGBA{R: 0, G: 255, B: 0, A: 255})},
 		},
 		{
 			img1:             "8a",
 			img2:             "5b",
 			diff:             "8diff",
 			expectedMismatch: 32896,
-			opts:             []pixelmatch.MatchOption{pixelmatch.Threshold(0.05)},
+			opts:             []pixelmatch.MatchOptionFn{pixelmatch.WithThreshold(0.05)},
 		},
 	}
 
@@ -143,7 +136,7 @@ func mustReadImage(t testing.TB, imageName string) image.Image {
 	return img
 }
 
-func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...pixelmatch.MatchOption) (string, func(*testing.T)) {
+func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...pixelmatch.MatchOptionFn) (string, func(*testing.T)) {
 	name := fmt.Sprintf("comparing %s to %s against %s", imgPath1, imgPath2, diffImgPath)
 
 	return name, func(t *testing.T) {
@@ -154,7 +147,7 @@ func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts
 
 		diffDst := image.Image(nil)
 
-		mismatch, err := pixelmatch.MatchPixel(img1, img2, append(opts, pixelmatch.WriteTo(&diffDst))...)
+		mismatch, err := pixelmatch.MatchPixel(img1, img2, append(opts, pixelmatch.WithDiffDest(&diffDst))...)
 		if err != nil {
 			t.Errorf("diffTest: unexpected error on matching image 1 and 2 with output diff: %s", err.Error())
 		}

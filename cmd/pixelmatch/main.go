@@ -85,15 +85,15 @@ func run() error {
 	}
 
 	var out image.Image
-	opts := []pixelmatch.MatchOption{
-		pixelmatch.Threshold(*threshold),
-		pixelmatch.Alpha(*alpha),
-		pixelmatch.AntiAliasedColor(color.RGBA(antiAliased)),
-		pixelmatch.DiffColor(color.RGBA(diffColor)),
-		pixelmatch.WriteTo(&out),
+	opts := []pixelmatch.MatchOptionFn{
+		pixelmatch.WithThreshold(*threshold),
+		pixelmatch.WithAlpha(*alpha),
+		pixelmatch.WithAntiAliasedColor(color.RGBA(antiAliased)),
+		pixelmatch.WithDiffColor(color.RGBA(diffColor)),
+		pixelmatch.WithDiffDest(&out),
 	}
 	if *aa {
-		opts = append(opts, pixelmatch.IncludeAntiAlias)
+		opts = append(opts, pixelmatch.WithAntiAlias(true))
 	}
 
 	_, err = pixelmatch.MatchPixel(img1, img2, opts...)

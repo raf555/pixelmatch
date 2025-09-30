@@ -21,58 +21,62 @@ type MatchOptions struct {
 	writeTo          *image.Image
 }
 
-type MatchOption func(*MatchOptions)
+type MatchOptionFn func(*MatchOptions)
 
-func Threshold(threshold float64) MatchOption {
+func WithThreshold(threshold float64) MatchOptionFn {
 	return func(o *MatchOptions) {
 		o.threshold = threshold
 	}
 }
 
-func WriteTo(img *image.Image) MatchOption {
+func WithDiffDest(img *image.Image) MatchOptionFn {
 	return func(o *MatchOptions) {
 		o.writeTo = img
 	}
 }
 
-func IncludeAntiAlias(o *MatchOptions) {
-	o.includeAA = true
+func WithAntiAlias(aa bool) MatchOptionFn {
+	return func(o *MatchOptions) {
+		o.includeAA = aa
+	}
 }
 
-func Alpha(alpha float64) MatchOption {
+func WithAlpha(alpha float64) MatchOptionFn {
 	return func(o *MatchOptions) {
 		o.alpha = alpha
 	}
 }
 
-func AntiAliasedColor(c color.Color) MatchOption {
+func WithAntiAliasedColor(c color.Color) MatchOptionFn {
 	return func(o *MatchOptions) {
 		o.antiAliasedColor = color.RGBAModel.Convert(c).(color.RGBA)
 	}
 }
 
-func DiffColor(c color.Color) MatchOption {
+func WithDiffColor(c color.Color) MatchOptionFn {
 	return func(o *MatchOptions) {
 		o.diffColor = color.RGBAModel.Convert(c).(color.RGBA)
 	}
 }
 
-func DiffColorAlt(c color.Color) MatchOption {
+func WithDiffColorAlt(c color.Color) MatchOptionFn {
 	return func(o *MatchOptions) {
 		diffColorAlt := color.RGBAModel.Convert(c).(color.RGBA)
 		o.diffColorAlt = &diffColorAlt
 	}
 }
 
-func EnableDiffMask(o *MatchOptions) {
-	o.diffMask = true
+func WithDiffMask(diffMask bool) MatchOptionFn {
+	return func(o *MatchOptions) {
+		o.diffMask = diffMask
+	}
 }
 
 type rgba struct {
 	R, G, B, A uint32
 }
 
-func MatchPixel(a, b image.Image, opts ...MatchOption) (diff int, err error) {
+func MatchPixel(a, b image.Image, opts ...MatchOptionFn) (diff int, err error) {
 	options := MatchOptions{
 		threshold:        0.1,
 		alpha:            0.1,
