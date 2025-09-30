@@ -1,3 +1,3 @@
-module github.com/orisano/pixelmatch
+module github.com/raf555/pixelmatch
 
-go 1.13
+go 1.25

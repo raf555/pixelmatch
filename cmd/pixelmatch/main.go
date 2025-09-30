@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/orisano/pixelmatch"
+	"github.com/raf555/pixelmatch"
 )
 
 type colorValue color.RGBA
