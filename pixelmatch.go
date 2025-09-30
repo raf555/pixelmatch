@@ -304,7 +304,7 @@ func hasManySiblings(img image.Image, x1, y1, width, height int) bool {
 }
 
 func isIdentical(a, b image.Image) bool {
-	if a.Bounds() != b.Bounds() {
+	if !a.Bounds().Eq(b.Bounds()) {
 		return false
 	}
 
