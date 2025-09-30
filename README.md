@@ -5,12 +5,12 @@
 library
 
 ```bash
-go get github.com/orisano/pixelmatch
+go get github.com/raf555/pixelmatch
 ```
 
 cli
 ```bash
-go get github.com/orisano/pixelmatch/cmd/pixelmatch
+go install github.com/raf555/pixelmatch/cmd/pixelmatch
 ```
 
 ## Author
