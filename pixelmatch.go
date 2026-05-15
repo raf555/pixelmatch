@@ -1,7 +1,6 @@
 package pixelmatch
 
 import (
-	"errors"
 	"fmt"
 	"image"
 	"image/draw"
@@ -23,18 +22,17 @@ import (
 // WithOutput target has the wrong size, or if any image is nil.
 func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 	if img1 == nil || img2 == nil {
-		return 0, errors.New("pixelmatch: img1 and img2 must not be nil")
+		return 0, ErrNilImage
 	}
 
 	b1 := img1.Bounds()
 	b2 := img2.Bounds()
 	w, h := b1.Dx(), b1.Dy()
 	if w != b2.Dx() || h != b2.Dy() {
-		return 0, fmt.Errorf("pixelmatch: image dimensions do not match: %dx%d vs %dx%d",
-			w, h, b2.Dx(), b2.Dy())
+		return 0, fmt.Errorf("%w: %dx%d vs %dx%d", ErrDimensionMismatch, w, h, b2.Dx(), b2.Dy())
 	}
 	if w == 0 || h == 0 {
-		return 0, errors.New("pixelmatch: image dimensions must be positive")
+		return 0, ErrInvalidDimensions
 	}
 
 	cfg := defaultConfig()
@@ -45,8 +43,7 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 	if cfg.output != nil {
 		ob := cfg.output.Bounds()
 		if ob.Dx() != w || ob.Dy() != h {
-			return 0, fmt.Errorf("pixelmatch: output dimensions do not match: %dx%d vs %dx%d",
-				ob.Dx(), ob.Dy(), w, h)
+			return 0, fmt.Errorf("%w: %dx%d vs %dx%d", ErrOutputDimensionMismatch, ob.Dx(), ob.Dy(), w, h)
 		}
 	}
 
@@ -95,7 +92,7 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 // always returns its own allocated image.
 func CompareToImage(img1, img2 image.Image, opts ...Option) (*image.NRGBA, int, error) {
 	if img1 == nil {
-		return nil, 0, errors.New("pixelmatch: img1 must not be nil")
+		return nil, 0, ErrNilImage
 	}
 	b := img1.Bounds()
 	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))

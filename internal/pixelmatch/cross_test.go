@@ -2,32 +2,10 @@ package pixelmatch
 
 import (
 	"encoding/base64"
-	"encoding/json"
-	"os"
 	"testing"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/internal/testutil"
 )
-
-type refCase struct {
-	Name string `json:"name"`
-	W    int    `json:"w"`
-	H    int    `json:"h"`
-	Opts struct {
-		Threshold    *float64 `json:"threshold"`
-		IncludeAA    *bool    `json:"includeAA"`
-		Alpha        *float64 `json:"alpha"`
-		DiffMask     *bool    `json:"diffMask"`
-		Checkerboard *bool    `json:"checkerboard"`
-		DiffColor    *[3]int  `json:"diffColor"`
-		DiffColorAlt *[3]int  `json:"diffColorAlt"`
-		AAColor      *[3]int  `json:"aaColor"`
-	} `json:"opts"`
-	Img1 string `json:"img1"`
-	Img2 string `json:"img2"`
-	Diff string `json:"diff"`
-	N    int    `json:"n"`
-}
 
 func toU8(rgb *[3]int) [3]uint8 {
 	return [3]uint8{uint8((*rgb)[0]), uint8((*rgb)[1]), uint8((*rgb)[2])}
@@ -37,14 +15,11 @@ func toU8(rgb *[3]int) [3]uint8 {
 // and asserts that this port produces identical diff counts and diff
 // buffers, byte for byte.
 func TestAgainstJSReference(t *testing.T) {
-	data, err := os.ReadFile("testdata/cases.json")
+	cases, err := testutil.GetTestCases()
 	if err != nil {
-		t.Skipf("no reference cases available: %v", err)
+		t.Fatalf("read cases: %s", err.Error())
 	}
-	var cases []refCase
-	if err := json.Unmarshal(data, &cases); err != nil {
-		t.Fatal(err)
-	}
+
 	if len(cases) == 0 {
 		t.Fatal("no cases in cases.json")
 	}
@@ -64,7 +39,7 @@ func TestAgainstJSReference(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			opts := pixelmatch.DefaultOptions()
+			opts := DefaultOptions()
 			if c.Opts.Threshold != nil {
 				opts.Threshold = *c.Opts.Threshold
 			}
@@ -92,7 +67,7 @@ func TestAgainstJSReference(t *testing.T) {
 			}
 
 			gotOut := make([]byte, len(img1))
-			gotN, err := pixelmatch.Match(img1, img2, gotOut, c.W, c.H, &opts)
+			gotN, err := Match(img1, img2, gotOut, c.W, c.H, &opts)
 			if err != nil {
 				t.Fatal(err)
 			}

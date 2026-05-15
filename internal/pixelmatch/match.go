@@ -16,7 +16,6 @@ package pixelmatch
 
 import (
 	"encoding/binary"
-	"errors"
 	"math"
 )
 
@@ -86,14 +85,14 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 	}
 
 	if width <= 0 || height <= 0 {
-		return 0, errors.New("pixelmatch: width and height must be positive")
+		return 0, ErrInvalidDimensions
 	}
 	expected := width * height * 4
 	if len(img1) != expected || len(img2) != expected {
-		return 0, errors.New("pixelmatch: image data size does not match width/height")
+		return 0, ErrDataSizeMismatch
 	}
 	if output != nil && len(output) != expected {
-		return 0, errors.New("pixelmatch: output size does not match width/height")
+		return 0, ErrOutputSizeMismatch
 	}
 
 	// Fast identical-images check with early exit.

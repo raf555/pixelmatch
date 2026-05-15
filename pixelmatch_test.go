@@ -3,12 +3,10 @@ package pixelmatch
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/png"
-	"os"
 	"testing"
 
 	"github.com/raf555/pixelmatch/internal/testutil"
@@ -233,13 +231,9 @@ func TestCompareWithNonTightOutput(t *testing.T) {
 // image.Image API against the low-level byte API for the JS reference
 // cases, ensuring no precision loss in the wrapping.
 func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
-	data, err := os.ReadFile("testdata/cases.json")
+	cases, err := testutil.GetTestCases()
 	if err != nil {
-		t.Skipf("no reference cases: %v", err)
-	}
-	var cases []refCase
-	if err := json.Unmarshal(data, &cases); err != nil {
-		t.Fatal(err)
+		t.Fatalf("read cases: %s", err.Error())
 	}
 
 	for _, c := range cases {
