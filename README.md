@@ -21,7 +21,7 @@ The simplest path — count differing pixels:
 import (
     "image/png"
     "os"
-    "github.com/example/pixelmatch"
+    "github.com/raf555/pixelmatch"
 )
 
 a, _ := png.Decode(fileA)
@@ -101,7 +101,3 @@ semi-transparency (both checkerboard and white-background modes), diff
 masks, custom colors, stripe patterns, single-pixel images, and degenerate
 aspect ratios. See `pixelmatch_test.go`, `cross_test.go`, and
 `image_test.go`.
-
-## License
-
-ISC, same as the original mapbox/pixelmatch.
