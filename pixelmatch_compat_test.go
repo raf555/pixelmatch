@@ -119,7 +119,7 @@ func TestCompatiblity(t *testing.T) {
 	}
 }
 
-const basePath = "testdata"
+const basePath = "internal/testutil/data"
 
 func mustReadImage(t testing.TB, imageName string) image.Image {
 	f, err := os.Open(filepath.Join(basePath, imageName+".png"))
