@@ -84,19 +84,17 @@ func run() error {
 		return fmt.Errorf("open image(path=%v): %w", args[1], err)
 	}
 
-	var out image.Image
-	opts := []pixelmatch.MatchOptionFn{
+	opts := []pixelmatch.Option{
 		pixelmatch.WithThreshold(*threshold),
 		pixelmatch.WithAlpha(*alpha),
-		pixelmatch.WithAntiAliasedColor(color.RGBA(antiAliased)),
-		pixelmatch.WithDiffColor(color.RGBA(diffColor)),
-		pixelmatch.WithDiffDest(&out),
+		pixelmatch.WithAAColor(antiAliased.R, antiAliased.G, antiAliased.B),
+		pixelmatch.WithDiffColor(diffColor.R, diffColor.G, diffColor.B),
 	}
 	if *aa {
-		opts = append(opts, pixelmatch.WithAntiAlias(true))
+		opts = append(opts, pixelmatch.WithIncludeAA(true))
 	}
 
-	_, err = pixelmatch.MatchPixel(img1, img2, opts...)
+	out, _, err := pixelmatch.CompareToImage(img1, img2, opts...)
 	if err != nil {
 		return fmt.Errorf("match pixel: %w", err)
 	}

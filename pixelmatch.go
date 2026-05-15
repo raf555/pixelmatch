@@ -1,344 +1,296 @@
 package pixelmatch
 
 import (
-	"bytes"
 	"errors"
+	"fmt"
 	"image"
-	"image/color"
-	"math"
+	"image/draw"
+
+	"github.com/raf555/pixelmatch/internal/pixelmatch"
 )
 
-var ErrImageSizesNotMatch = errors.New("image sizes do not match")
+// Option configures a Compare or CompareToImage call. Options compose: pass
+// any number to a single call. Unspecified options take the package
+// defaults (see DefaultOptions for the underlying values).
+//
+// Example:
+//
+//	out := image.NewNRGBA(image.Rect(0, 0, w, h))
+//	n, err := pixelmatch.Compare(a, b,
+//	    pixelmatch.WithThreshold(0.05),
+//	    pixelmatch.WithDiffColor(255, 0, 255),
+//	    pixelmatch.WithOutput(out),
+//	)
+type Option func(*config)
 
-type MatchOptions struct {
-	threshold        float64
-	includeAA        bool
-	alpha            float64
-	antiAliasedColor color.RGBA
-	diffColor        color.RGBA
-	diffColorAlt     *color.RGBA
-	diffMask         bool
-	writeTo          *image.Image
+// config bundles the algorithm options and the (optional) output
+// destination for one Compare call. It's an internal type so the public
+// Option function-type can carry the output target alongside the
+// per-pixel parameters without exposing an *image.NRGBA field on the
+// byte-API Options struct (which has no business knowing about
+// image.Image).
+type config struct {
+	opts   pixelmatch.Options
+	output *image.NRGBA
 }
 
-type MatchOptionFn func(*MatchOptions)
+func defaultConfig() config {
+	return config{opts: pixelmatch.DefaultOptions()}
+}
 
-func WithThreshold(threshold float64) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.threshold = threshold
+// WithThreshold sets the matching threshold (0..1). Smaller is more
+// sensitive. Default 0.1.
+func WithThreshold(t float64) Option {
+	return func(c *config) { c.opts.Threshold = t }
+}
+
+// WithIncludeAA, if true, disables anti-aliased pixel detection so AA
+// pixels are counted as real differences. Default false.
+func WithIncludeAA(b bool) Option {
+	return func(c *config) { c.opts.IncludeAA = b }
+}
+
+// WithAlpha sets the opacity (0..1) of the original image in the diff
+// output. 0 = pure white, 1 = original brightness. Default 0.1.
+func WithAlpha(a float64) Option {
+	return func(c *config) { c.opts.Alpha = a }
+}
+
+// WithAAColor sets the RGB color used for anti-aliased pixels in the diff
+// output. Default 255, 255, 0 (yellow).
+func WithAAColor(r, g, b uint8) Option {
+	return func(c *config) { c.opts.AAColor = [3]uint8{r, g, b} }
+}
+
+// WithDiffColor sets the RGB color used for differing pixels in the diff
+// output. Default 255, 0, 0 (red).
+func WithDiffColor(r, g, b uint8) Option {
+	return func(c *config) { c.opts.DiffColor = [3]uint8{r, g, b} }
+}
+
+// WithDiffColorAlt sets an alternative RGB color used for pixels in img2
+// that are darker than img1, letting you distinguish "added" from
+// "removed" content. By default no alt color is used.
+func WithDiffColorAlt(r, g, b uint8) Option {
+	return func(c *config) {
+		c.opts.DiffColorAlt = [3]uint8{r, g, b}
+		c.opts.HasDiffColorAlt = true
 	}
 }
 
-func WithDiffDest(img *image.Image) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.writeTo = img
-	}
+// WithDiffMask, if true, draws the diff over a transparent background
+// instead of over the (faded) original image. Anti-aliased pixels are not
+// drawn in mask mode. Default false.
+func WithDiffMask(b bool) Option {
+	return func(c *config) { c.opts.DiffMask = b }
 }
 
-func WithAntiAlias(aa bool) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.includeAA = aa
-	}
+// WithCheckerboard controls whether semi-transparent pixels are blended
+// against a checkerboard pattern (true) or plain white (false). Default
+// true; pre-v7 pixelmatch behavior is false.
+func WithCheckerboard(b bool) Option {
+	return func(c *config) { c.opts.Checkerboard = b }
 }
 
-func WithAlpha(alpha float64) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.alpha = alpha
-	}
+// WithOutput sets the destination image to which the visual diff will be
+// written. Without this option, Compare only counts mismatched pixels and
+// does not produce a diff image (which is faster).
+//
+// The output's dimensions must match img1 and img2. The most efficient
+// case is an *image.NRGBA with a tight stride and zero origin, which is
+// written directly; other layouts go through an internal buffer.
+//
+// To get a freshly allocated diff image without managing the buffer
+// yourself, use CompareToImage instead.
+func WithOutput(out *image.NRGBA) Option {
+	return func(c *config) { c.output = out }
 }
 
-func WithAntiAliasedColor(c color.Color) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.antiAliasedColor = color.RGBAModel.Convert(c).(color.RGBA)
+// Compare compares two images and returns the number of mismatched
+// pixels. By default no diff image is produced; pass WithOutput to write
+// a visual diff into a buffer of your choice.
+//
+// Compare accepts any image.Image as input. *image.NRGBA goes through a
+// zero-copy fast path; *image.RGBA un-premultiplies on the fly; other
+// types are converted via draw.Draw. For maximum performance, pass
+// *image.NRGBA (this is the layout pixelmatch operates on natively:
+// straight, non-premultiplied RGBA).
+//
+// Compare returns an error if the input images differ in size, if a
+// WithOutput target has the wrong size, or if any image is nil.
+func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
+	if img1 == nil || img2 == nil {
+		return 0, errors.New("pixelmatch: img1 and img2 must not be nil")
 	}
-}
 
-func WithDiffColor(c color.Color) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.diffColor = color.RGBAModel.Convert(c).(color.RGBA)
+	b1 := img1.Bounds()
+	b2 := img2.Bounds()
+	w, h := b1.Dx(), b1.Dy()
+	if w != b2.Dx() || h != b2.Dy() {
+		return 0, fmt.Errorf("pixelmatch: image dimensions do not match: %dx%d vs %dx%d",
+			w, h, b2.Dx(), b2.Dy())
 	}
-}
-
-func WithDiffColorAlt(c color.Color) MatchOptionFn {
-	return func(o *MatchOptions) {
-		diffColorAlt := color.RGBAModel.Convert(c).(color.RGBA)
-		o.diffColorAlt = &diffColorAlt
+	if w == 0 || h == 0 {
+		return 0, errors.New("pixelmatch: image dimensions must be positive")
 	}
-}
 
-func WithDiffMask(diffMask bool) MatchOptionFn {
-	return func(o *MatchOptions) {
-		o.diffMask = diffMask
-	}
-}
-
-type rgba struct {
-	R, G, B, A uint32
-}
-
-func MatchPixel(a, b image.Image, opts ...MatchOptionFn) (diff int, err error) {
-	options := MatchOptions{
-		threshold:        0.1,
-		alpha:            0.1,
-		antiAliasedColor: color.RGBA{R: 255, G: 255, B: 0, A: 255},
-		diffColor:        color.RGBA{R: 255, G: 0, B: 0, A: 255},
-	}
+	cfg := defaultConfig()
 	for _, opt := range opts {
-		opt(&options)
+		opt(&cfg)
 	}
 
-	if !a.Bounds().Eq(b.Bounds()) {
-		return 0, ErrImageSizesNotMatch
-	}
-
-	bounds := a.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
-
-	var out *image.RGBA
-	if options.writeTo != nil {
-		out = image.NewRGBA(bounds)
-		defer func() {
-			if err == nil {
-				*options.writeTo = out
-			}
-		}()
-	}
-
-	if isIdentical(a, b) {
-		if out != nil && !options.diffMask {
-			for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-				for x := bounds.Min.X; x < bounds.Max.X; x++ {
-					drawGrayPixel(a, x, y, options.alpha, out)
-				}
-			}
-		}
-		return 0, nil
-	}
-
-	maxDelta := 35215 * options.threshold * options.threshold
-	aaColor := options.antiAliasedColor
-	diffColor := options.diffColor
-	var diffColorAlt color.RGBA
-	if options.diffColorAlt != nil {
-		diffColorAlt = *options.diffColorAlt
-	} else {
-		diffColorAlt = diffColor
-	}
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			pos := (y-bounds.Min.Y)*width + (x - bounds.Min.X)
-			r1, g1, b1, a1 := a.At(x, y).RGBA()
-			r2, g2, b2, a2 := b.At(x, y).RGBA()
-
-			pixel1 := rgba{R: r1, G: g1, B: b1, A: a1}
-			pixel2 := rgba{R: r2, G: g2, B: b2, A: a2}
-
-			delta := colorDelta(&pixel1, &pixel2, pos, false)
-			if math.Abs(delta) > maxDelta {
-				if !options.includeAA && (isAntiAliased(a, x, y, width, height, b) || isAntiAliased(b, x, y, width, height, a)) {
-					if out != nil && !options.diffMask {
-						drawPixel(out, x, y, aaColor.R, aaColor.G, aaColor.B)
-					}
-				} else {
-					if out != nil {
-						if delta < 0 {
-							drawPixel(out, x, y, diffColorAlt.R, diffColorAlt.G, diffColorAlt.B)
-						} else {
-							drawPixel(out, x, y, diffColor.R, diffColor.G, diffColor.B)
-						}
-					}
-					diff++
-				}
-			} else if out != nil && !options.diffMask {
-				drawGrayPixel(a, x, y, options.alpha, out)
-			}
+	if cfg.output != nil {
+		ob := cfg.output.Bounds()
+		if ob.Dx() != w || ob.Dy() != h {
+			return 0, fmt.Errorf("pixelmatch: output dimensions do not match: %dx%d vs %dx%d",
+				ob.Dx(), ob.Dy(), w, h)
 		}
 	}
 
-	return diff, nil
-}
+	// Materialize inputs as straight-RGBA byte buffers. Fast paths avoid
+	// per-pixel conversion entirely.
+	pix1 := asStraightRGBA(img1)
+	pix2 := asStraightRGBA(img2)
 
-func drawPixel(out *image.RGBA, x, y int, r, g, b uint8) {
-	out.SetRGBA(x, y, color.RGBA{R: r, G: g, B: b, A: 255})
-}
-
-func drawGrayPixel(img image.Image, x, y int, alpha float64, out *image.RGBA) {
-	r, g, b, a := img.At(x, y).RGBA()
-	rf := float64(r>>8) * float64(a>>8) / 255.0
-	gf := float64(g>>8) * float64(a>>8) / 255.0
-	bf := float64(b>>8) * float64(a>>8) / 255.0
-	yVal := rf*0.29889531 + gf*0.58662247 + bf*0.11448223
-	val := uint8(255 + (yVal-255)*alpha)
-	drawPixel(out, x, y, val, val, val)
-}
-
-func checkerboardBackground(pos int) (float64, float64, float64) {
-	rb := 48 + 159*(pos%2)
-	gb := 48 + 159*((int(float64(pos)/1.618033988749895))%2)
-	bb := 48 + 159*((int(float64(pos)/2.618033988749895))%2)
-	return float64(rb), float64(gb), float64(bb)
-}
-
-func colorDelta(a, b *rgba, pos int, yOnly bool) float64 {
-	r1 := float64(a.R >> 8)
-	g1 := float64(a.G >> 8)
-	b1 := float64(a.B >> 8)
-	a1 := float64(a.A >> 8)
-	r2 := float64(b.R >> 8)
-	g2 := float64(b.G >> 8)
-	b2 := float64(b.B >> 8)
-	a2 := float64(b.A >> 8)
-
-	dr := r1 - r2
-	dg := g1 - g2
-	db := b1 - b2
-	da := a1 - a2
-
-	if dr == 0 && dg == 0 && db == 0 && da == 0 {
-		return 0
-	}
-
-	if a1 < 255 || a2 < 255 {
-		rb, gb, bb := checkerboardBackground(pos)
-		dr = (r1*a1 - r2*a2 - rb*da) / 255.0
-		dg = (g1*a1 - g2*a2 - gb*da) / 255.0
-		db = (b1*a1 - b2*a2 - bb*da) / 255.0
-	}
-
-	y := dr*0.29889531 + dg*0.58662247 + db*0.11448223
-	if yOnly {
-		return y
-	}
-
-	i := dr*0.59597799 - dg*0.27417610 - db*0.32180189
-	q := dr*0.21147017 - dg*0.52261711 + db*0.31114694
-
-	delta := 0.5053*y*y + 0.299*i*i + 0.1957*q*q
-	if y > 0 {
-		return -delta
-	}
-	return delta
-}
-
-func isAntiAliased(img image.Image, x1, y1, width, height int, img2 image.Image) bool {
-	x0 := max(x1-1, 0)
-	y0 := max(y1-1, 0)
-	x2 := min(x1+1, width-1)
-	y2 := min(y1+1, height-1)
-
-	zeroes := 0
-	if x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2 {
-		zeroes = 1
-	}
-
-	min := 0.0
-	max := 0.0
-	minX, minY := 0, 0
-	maxX, maxY := 0, 0
-
-	r1, g1, b1, a1 := img.At(x1, y1).RGBA()
-
-	for x := x0; x <= x2; x++ {
-		for y := y0; y <= y2; y++ {
-			if x == x1 && y == y1 {
-				continue
-			}
-			r2, g2, b2, a2 := img.At(x, y).RGBA()
-			pixel1 := rgba{R: r1, G: g1, B: b1, A: a1}
-			pixel2 := rgba{R: r2, G: g2, B: b2, A: a2}
-			delta := colorDelta(&pixel1, &pixel2, y*width+x, true)
-
-			if delta == 0 {
-				zeroes++
-				if zeroes > 2 {
-					return false
-				}
-			} else if delta < min {
-				min = delta
-				minX = x
-				minY = y
-			} else if delta > max {
-				max = delta
-				maxX = x
-				maxY = y
-			}
+	// Decide what raw output buffer to write into. If the caller's
+	// output is an NRGBA with stride == 4*w AND origin at (0,0), we can
+	// write straight into its Pix slice. Otherwise we write into a temp
+	// buffer and copy back at the end.
+	var outBuf []byte
+	var temp []byte
+	if cfg.output != nil {
+		if cfg.output.Stride == 4*w && cfg.output.Rect.Min == (image.Point{}) {
+			outBuf = cfg.output.Pix[:4*w*h]
+		} else {
+			temp = make([]byte, 4*w*h)
+			outBuf = temp
 		}
 	}
 
-	if min == 0 || max == 0 {
-		return false
+	n, err := pixelmatch.Match(pix1, pix2, outBuf, w, h, &cfg.opts)
+	if err != nil {
+		return 0, err
 	}
 
-	return (hasManySiblings(img, minX, minY, width, height) && hasManySiblings(img2, minX, minY, width, height)) ||
-		(hasManySiblings(img, maxX, maxY, width, height) && hasManySiblings(img2, maxX, maxY, width, height))
+	if temp != nil {
+		copyPixToNRGBA(temp, cfg.output, w, h)
+	}
+	return n, nil
 }
 
-func hasManySiblings(img image.Image, x1, y1, width, height int) bool {
-	x0 := max(x1-1, 0)
-	y0 := max(y1-1, 0)
-	x2 := min(x1+1, width-1)
-	y2 := min(y1+1, height-1)
-	valR, valG, valB, valA := img.At(x1, y1).RGBA()
-	zeroes := 0
-	if x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2 {
-		zeroes = 1
+// CompareToImage compares two images and returns a freshly allocated
+// diff image alongside the mismatched-pixel count. It's a convenience
+// wrapper for callers who want a diff without managing the output
+// buffer themselves.
+//
+// Equivalent to:
+//
+//	out := image.NewNRGBA(image.Rect(0, 0, w, h))
+//	n, err := Compare(img1, img2, append(opts, WithOutput(out))...)
+//
+// Passing WithOutput here is harmless but redundant — CompareToImage
+// always returns its own allocated image.
+func CompareToImage(img1, img2 image.Image, opts ...Option) (*image.NRGBA, int, error) {
+	if img1 == nil {
+		return nil, 0, errors.New("pixelmatch: img1 must not be nil")
 	}
-
-	for x := x0; x <= x2; x++ {
-		for y := y0; y <= y2; y++ {
-			if x == x1 && y == y1 {
-				continue
-			}
-			r, g, b, a := img.At(x, y).RGBA()
-			if valR == r && valG == g && valB == b && valA == a {
-				zeroes++
-				if zeroes > 2 {
-					return true
-				}
-			}
-		}
+	b := img1.Bounds()
+	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	// Force our own output regardless of what the caller passed.
+	n, err := Compare(img1, img2, append(opts, WithOutput(out))...)
+	if err != nil {
+		return nil, 0, err
 	}
-	return false
+	return out, n, nil
 }
 
-func isIdentical(a, b image.Image) bool {
-	if !a.Bounds().Eq(b.Bounds()) {
-		return false
-	}
+// asStraightRGBA returns the image's pixels as a tightly-packed
+// width*height*4-byte slice in straight (non-premultiplied) R, G, B, A
+// order — the layout pixelmatch operates on natively.
+//
+// Fast paths:
+//   - *image.NRGBA with zero origin and stride == 4*w: returns its Pix
+//     slice directly (no copy, no allocation).
+//   - *image.NRGBA with other layout: re-packs into a fresh buffer.
+//   - *image.RGBA: un-premultiplies into a fresh buffer.
+//   - everything else: draw.Draw into a temporary NRGBA, which handles
+//     every color model in the stdlib correctly.
+//
+// Callers must treat the returned buffer as read-only — it may alias the
+// source image.
+func asStraightRGBA(img image.Image) []byte {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
 
-	switch x := a.(type) {
-	case *image.RGBA:
-		y, ok := b.(*image.RGBA)
-		if ok && bytes.Equal(x.Pix, y.Pix) {
-			return true
-		}
-	case *image.RGBA64:
-		y, ok := b.(*image.RGBA64)
-		if ok && bytes.Equal(x.Pix, y.Pix) {
-			return true
-		}
+	switch src := img.(type) {
 	case *image.NRGBA:
-		y, ok := b.(*image.NRGBA)
-		if ok && bytes.Equal(x.Pix, y.Pix) {
-			return true
+		// Tight, zero-origin NRGBA: zero-copy fast path.
+		if src.Stride == 4*w && src.Rect.Min == b.Min {
+			return src.Pix[:4*w*h]
 		}
-	case *image.NRGBA64:
-		y, ok := b.(*image.NRGBA64)
-		if ok && bytes.Equal(x.Pix, y.Pix) {
-			return true
+		// Re-pack a non-tight NRGBA.
+		buf := make([]byte, 4*w*h)
+		for y := 0; y < h; y++ {
+			srcRow := src.PixOffset(b.Min.X, b.Min.Y+y)
+			copy(buf[y*4*w:(y+1)*4*w], src.Pix[srcRow:srcRow+4*w])
 		}
-	case *image.Gray:
-		y, ok := b.(*image.Gray)
-		if ok && bytes.Equal(x.Pix, y.Pix) {
-			return true
+		return buf
+
+	case *image.RGBA:
+		// Premultiplied → straight. Reverse the (c*a/255) operation.
+		buf := make([]byte, 4*w*h)
+		for y := 0; y < h; y++ {
+			srcRow := src.PixOffset(b.Min.X, b.Min.Y+y)
+			dstRow := y * 4 * w
+			for x := 0; x < w; x++ {
+				si := srcRow + x*4
+				di := dstRow + x*4
+				r := src.Pix[si]
+				g := src.Pix[si+1]
+				bb := src.Pix[si+2]
+				a := src.Pix[si+3]
+				switch a {
+				case 0:
+					// Fully transparent: leave RGB at zero.
+					buf[di+3] = 0
+				case 0xff:
+					buf[di] = r
+					buf[di+1] = g
+					buf[di+2] = bb
+					buf[di+3] = a
+				default:
+					af := uint32(a)
+					buf[di] = uint8(uint32(r) * 0xff / af)
+					buf[di+1] = uint8(uint32(g) * 0xff / af)
+					buf[di+2] = uint8(uint32(bb) * 0xff / af)
+					buf[di+3] = a
+				}
+			}
 		}
-	case *image.Gray16:
-		y, ok := b.(*image.Gray16)
-		if ok && bytes.Equal(x.Pix, y.Pix) {
-			return true
-		}
+		return buf
+
+	default:
+		// Generic path: works for any image.Image — Gray, Paletted,
+		// YCbCr, etc. Per-pixel via draw.Draw, which handles every
+		// stdlib color model correctly.
+		tmp := image.NewNRGBA(image.Rect(0, 0, w, h))
+		draw.Draw(tmp, tmp.Bounds(), img, b.Min, draw.Src)
+		return tmp.Pix
 	}
-	return false
 }
+
+// copyPixToNRGBA writes a tightly-packed RGBA byte buffer into an
+// arbitrary NRGBA image, respecting its stride and origin.
+func copyPixToNRGBA(src []byte, dst *image.NRGBA, w, h int) {
+	if dst.Stride == 4*w && dst.Rect.Min == (image.Point{}) {
+		copy(dst.Pix, src)
+		return
+	}
+	for y := 0; y < h; y++ {
+		dstRow := dst.PixOffset(dst.Rect.Min.X, dst.Rect.Min.Y+y)
+		copy(dst.Pix[dstRow:dstRow+4*w], src[y*4*w:(y+1)*4*w])
+	}
+}
+
+// Compile-time assertion that *image.NRGBA satisfies draw.Image.
+var _ draw.Image = (*image.NRGBA)(nil)
