@@ -1,7 +1,9 @@
-# pixelmatch-go
+# pixelmatch
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/raf555/pixelmatch?status.svg)](https://pkg.go.dev/github.com/raf555/pixelmatch?tab=doc)
 
 A native Go port of [mapbox/pixelmatch](https://github.com/mapbox/pixelmatch)
-v7.2.0 — the smallest, simplest, fastest pixel-level image comparison library.
+— the smallest, simplest, fastest pixel-level image comparison library.
 Pure Go, zero external dependencies, no cgo.
 
 Features accurate **anti-aliased pixel detection** and **perceptual color
@@ -10,7 +12,7 @@ difference metrics** (YIQ NTSC color space, per Kotsarenko & Ramos 2010).
 ## Install
 
 ```
-go get github.com/raf555/pixelmatch
+go get github.com/raf555/pixelmatch@latest
 ```
 
 ## Usage
@@ -27,7 +29,7 @@ import (
 a, _ := png.Decode(fileA)
 b, _ := png.Decode(fileB)
 
-n, err := pixelmatch.Compare(a, b, pixelmatch.WithThreshold(0.1))
+n, err := pixelmatch.Compare(a, b)
 // n = number of mismatched pixels
 ```
 
@@ -41,7 +43,7 @@ n, err := pixelmatch.Compare(a, b,
     pixelmatch.WithDiffColor(255, 0, 255),
 )
 // out now contains the visual diff
-png.Encode(file, out)
+_ = png.Encode(file, out)
 ```
 
 Or get a freshly allocated diff in one call:
@@ -76,22 +78,16 @@ diff, n, err := pixelmatch.CompareToImage(a, b, pixelmatch.WithThreshold(0.1))
 - **anything else** (`Gray`, `Paletted`, `YCbCr`, etc.): handled via
   `draw.Draw` to a temporary NRGBA. Always correct, slower.
 
-`png.Decode` returns whichever concrete type matches the source bit depth
-and alpha. The wrapper handles all of them.
-
 ## Performance
 
 On a Xeon @ 2.10 GHz, comparing two 800×600 images:
 
 ```
-BenchmarkMatch800x600           ~17.8 ms/op   216 MB/s   0 allocs (byte API)
-BenchmarkMatchIdentical800x600  ~10.6 ms/op   362 MB/s   0 allocs
 BenchmarkCompareNRGBA800x600    ~18.4 ms/op   208 MB/s   1 alloc  (image.Image API, NRGBA)
 BenchmarkCompareRGBA800x600     ~22.5 ms/op   170 MB/s   3 allocs (with un-premultiply)
 ```
 
-The `image.Image` API is essentially free over the byte API when the input
-is `*image.NRGBA`.
+*p.s. that 1 allocation comes from the options handling.*
 
 ## Correctness
 
@@ -101,3 +97,7 @@ semi-transparency (both checkerboard and white-background modes), diff
 masks, custom colors, stripe patterns, single-pixel images, and degenerate
 aspect ratios. See `pixelmatch_test.go`, `cross_test.go`, and
 `image_test.go`.
+
+## License
+
+ISC, same as the original mapbox/pixelmatch.
