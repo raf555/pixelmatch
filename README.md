@@ -74,7 +74,7 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 - **`*image.NRGBA`** with tight stride and zero origin: **zero-copy** fast
   path. This is the recommended type — it's the format pixelmatch uses
   natively (straight, non-premultiplied RGBA).
-- **`*image.RGBA`**: converted by un-premultiplying alpha. ~24% slower.
+- **`*image.RGBA`**: converted by un-premultiplying alpha. ~8-10% slower.
 - **anything else** (`Gray`, `Paletted`, `YCbCr`, etc.): handled via
   `draw.Draw` to a temporary NRGBA. Always correct, slower.
 
@@ -82,22 +82,22 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 
 ### Benchmark Results Summary
 
-Command
+**Command**
+
 ```sh
-go test -bench=Benchmark* -benchmem -count=10
+go test -bench=. -benchmem -count=10 -cpu 1
 ```
 
-### Benchmark Results Summary
-
 **Environment:**
-* **OS/Arch:** TODO
-* **CPU:** TODO
+* **OS/Arch:** linux/amd64
+* **Package:** github.com/raf555/pixelmatch
+* **CPU:** AMD EPYC 9634 84-Core Processor
 
 | Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **`CompareNRGBA800x600`** | 12.70ms ± 1% | 288.3MiB ± 1% | 0.000 ± 0% | 0.000 ± 0% |
-| **`CompareNoOutputNRGBA`** | 7.378ms ± 2% | 496.4MiB ± 2% | 0.000 ± 0% | 0.000 ± 0% |
-| **`CompareRGBA800x600`** | 13.75ms ± 26% | 266.4MiB ± 21% | 3.672MiB ± 0% | 2.000 ± 0% |
+| **`CompareNRGBA800x600`** | 15.99ms ± 3% | 229.0MiB ± 3% | 0.000 ± 0% | 0.000 ± 0% |
+| **`CompareNoOutputNRGBA`** | 9.230ms ± 4% | 396.8MiB ± 4% | 0.000 ± 0% | 0.000 ± 0% |
+| **`CompareRGBA800x600`** | 17.66ms ± 3% | 207.3MiB ± 3% | 3.672MiB ± 0% | 2.000 ± 0% |
 
 ## Correctness
 
@@ -105,8 +105,7 @@ The port is verified byte-for-byte against the reference JavaScript
 implementation across 14 test cases covering random images, gradient edges,
 semi-transparency (both checkerboard and white-background modes), diff
 masks, custom colors, stripe patterns, single-pixel images, and degenerate
-aspect ratios. See `pixelmatch_test.go`, `cross_test.go`, and
-`image_test.go`.
+aspect ratios. See the test files.
 
 ## License
 
