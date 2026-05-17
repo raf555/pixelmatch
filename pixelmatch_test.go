@@ -3,10 +3,12 @@ package pixelmatch
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/raf555/pixelmatch/internal/testutil"
@@ -328,8 +330,58 @@ func TestRoundTripPNG(t *testing.T) {
 	}
 }
 
-// TestDrawPackageContract ensures *image.NRGBA still satisfies draw.Image.
-// (Doubles as a compile-time sanity check on the import graph.)
-func TestDrawPackageContract(t *testing.T) {
-	var _ draw.Image = image.NewNRGBA(image.Rect(0, 0, 1, 1))
+func TestCompare(t *testing.T) {
+	type testcase struct {
+		fNamePrefix string
+		shouldMatch bool
+	}
+
+	for _, tc := range []testcase{
+		// orisano's fork testdata
+		// https://github.com/orisano/pixelmatch/blob/master/pixelmatch_test.go
+		{"01_matching", true},
+		{"02_nonmatching", false},
+		{"03_nonmatching_strideskip", false},
+	} {
+		t.Run(tc.fNamePrefix, func(t *testing.T) {
+
+			pathA := path.Join("internal/testutil/data", tc.fNamePrefix+"_a.png")
+			pathB := path.Join("internal/testutil/data", tc.fNamePrefix+"_b.png")
+
+			readpng := func(path string) image.Image {
+
+				f, err := os.Open(path)
+				if errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("%s does not exist, please create it for this test to run: %v", path, err)
+				} else if err != nil {
+					t.Fatalf("open file err: %s", err.Error())
+				}
+
+				img, err := png.Decode(f)
+				if err != nil {
+					t.Fatalf("decode file err: %s", err.Error())
+				}
+
+				return img
+			}
+
+			imgA := readpng(pathA)
+			imgB := readpng(pathB)
+
+			res, err := Compare(imgA, imgB)
+			if err != nil {
+				t.Fatalf("compare err: %s", err.Error())
+			}
+
+			if tc.shouldMatch {
+				if res != 0 {
+					t.Errorf("should have been 0 diff, but was %d", res)
+				}
+			} else {
+				if res == 0 {
+					t.Errorf("should have been >0 diff, but was %d", res)
+				}
+			}
+		})
+	}
 }
