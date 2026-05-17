@@ -50,7 +50,7 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 
 	cfg := defaultConfig()
 	for _, opt := range opts {
-		cfg = opt(cfg)
+		opt(&cfg)
 	}
 
 	if cfg.output != nil {

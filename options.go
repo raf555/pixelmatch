@@ -18,7 +18,7 @@ import (
 //	    pixelmatch.WithDiffColor(255, 0, 255),
 //	    pixelmatch.WithOutput(out),
 //	)
-type Option func(config) config
+type Option func(*config)
 
 type config struct {
 	opts   pixelmatch.Options
@@ -26,51 +26,48 @@ type config struct {
 }
 
 func defaultConfig() config {
-	return config{opts: pixelmatch.DefaultOptions()}
+	return config{
+		opts: pixelmatch.DefaultOptions(),
+	}
 }
 
 // WithThreshold sets the matching threshold (0..1). Smaller is more
 // sensitive. Default 0.1.
 func WithThreshold(t float64) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.Threshold = t
-		return c
 	}
 }
 
 // WithIncludeAA, if true, disables anti-aliased pixel detection so AA
 // pixels are counted as real differences. Default false.
 func WithIncludeAA(b bool) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.IncludeAA = b
-		return c
 	}
 }
 
 // WithAlpha sets the opacity (0..1) of the original image in the diff
 // output. 0 = pure white, 1 = original brightness. Default 0.1.
 func WithAlpha(a float64) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.Alpha = a
-		return c
 	}
 }
 
 // WithAAColor sets the RGB color used for anti-aliased pixels in the diff
 // output. Default 255, 255, 0 (yellow).
 func WithAAColor(r, g, b uint8) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.AAColor = [3]uint8{r, g, b}
-		return c
 	}
 }
 
 // WithDiffColor sets the RGB color used for differing pixels in the diff
 // output. Default 255, 0, 0 (red).
 func WithDiffColor(r, g, b uint8) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.DiffColor = [3]uint8{r, g, b}
-		return c
 	}
 }
 
@@ -78,10 +75,9 @@ func WithDiffColor(r, g, b uint8) Option {
 // that are darker than img1, letting you distinguish "added" from
 // "removed" content. By default no alt color is used.
 func WithDiffColorAlt(r, g, b uint8) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.DiffColorAlt = [3]uint8{r, g, b}
 		c.opts.HasDiffColorAlt = true
-		return c
 	}
 }
 
@@ -89,9 +85,8 @@ func WithDiffColorAlt(r, g, b uint8) Option {
 // instead of over the (faded) original image. Anti-aliased pixels are not
 // drawn in mask mode. Default false.
 func WithDiffMask(b bool) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.DiffMask = b
-		return c
 	}
 }
 
@@ -99,9 +94,8 @@ func WithDiffMask(b bool) Option {
 // against a checkerboard pattern (true) or plain white (false). Default
 // true.
 func WithCheckerboard(b bool) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.opts.Checkerboard = b
-		return c
 	}
 }
 
@@ -116,8 +110,7 @@ func WithCheckerboard(b bool) Option {
 // To get a freshly allocated diff image without managing the buffer
 // yourself, use CompareToImage instead.
 func WithOutput(out *image.NRGBA) Option {
-	return func(c config) config {
+	return func(c *config) {
 		c.output = out
-		return c
 	}
 }

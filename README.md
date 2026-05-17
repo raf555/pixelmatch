@@ -99,6 +99,8 @@ go test -bench=. -benchmem -count=10 -cpu 1
 | **`CompareNoOutputNRGBA`** | 9.230ms ± 4% | 396.8MiB ± 4% | 0.000 ± 0% | 0.000 ± 0% |
 | **`CompareRGBA800x600`** | 17.66ms ± 3% | 207.3MiB ± 3% | 3.672MiB ± 0% | 2.000 ± 0% |
 
+p.s. that 1 allocation comes from the options handling.
+
 ## Correctness
 
 The port is verified byte-for-byte against the reference JavaScript
