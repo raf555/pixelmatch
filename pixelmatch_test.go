@@ -302,8 +302,8 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 func TestRoundTripPNG(t *testing.T) {
 	w, h := 8, 8
 	src := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			src.Set(x, y, color.NRGBA{uint8(x * 32), uint8(y * 32), 128, 255})
 		}
 	}

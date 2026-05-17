@@ -1,17 +1,3 @@
-// Package pixelmatch is a native Go port of mapbox/pixelmatch v7.2.0:
-// the smallest, simplest and fastest pixel-level image comparison library.
-//
-// It compares two raw RGBA images (4 bytes per pixel: R, G, B, A) of equal
-// dimensions and optionally writes a diff image to an output buffer. It
-// returns the number of mismatched pixels.
-//
-// Original JS implementation: https://github.com/mapbox/pixelmatch
-// License of original: ISC (Volodymyr Agafonkin / Mapbox).
-//
-// Algorithm references:
-//   - "Measuring perceived color difference using YIQ NTSC transmission color
-//     space in mobile applications" (Kotsarenko & Ramos, 2010).
-//   - "Anti-aliased Pixel and Intensity Slope Detector" (Vyšniauskas, 2009).
 package pixelmatch
 
 import (
@@ -25,10 +11,6 @@ type Options struct {
 	// Threshold is the matching threshold (0..1). Smaller values make the
 	// comparison more sensitive. Default 0.1.
 	Threshold float64
-
-	// IncludeAA, when true, disables anti-aliased pixel detection (so AA
-	// pixels are counted as real differences). Default false.
-	IncludeAA bool
 
 	// Alpha is the blending factor of unchanged pixels in the diff output:
 	// 0 = pure white, 1 = original brightness. Default 0.1.
@@ -45,7 +27,13 @@ type Options struct {
 	// DiffColorAlt is used for pixels in img2 that are darker than img1
 	// (only when HasDiffColorAlt is true), letting you distinguish "added"
 	// from "removed" content.
-	DiffColorAlt    [3]uint8
+	DiffColorAlt [3]uint8
+
+	// IncludeAA, when true, disables anti-aliased pixel detection (so AA
+	// pixels are counted as real differences). Default false.
+	IncludeAA bool
+
+	// HasDiffColorAlt enables the use of DiffColorAlt for darker pixels.
 	HasDiffColorAlt bool
 
 	// DiffMask, if true, draws the diff over a transparent background
@@ -55,12 +43,11 @@ type Options struct {
 
 	// Checkerboard, if true, blends semi-transparent pixels against a
 	// checkerboard pattern when comparing, instead of plain white. This
-	// gives a more accurate alpha-aware comparison and is the default
-	// since v7.2.0.
+	// gives a more accurate alpha-aware comparison.
 	Checkerboard bool
 }
 
-// DefaultOptions returns options matching the JS pixelmatch v7.2.0 defaults.
+// DefaultOptions returns options matching the JS pixelmatch defaults.
 func DefaultOptions() Options {
 	return Options{
 		Threshold:    0.1,
@@ -266,7 +253,7 @@ func hasManySiblings(img []byte, x1, y1, width, height int) bool {
 // pixel is darker (positive) or lighter (negative) than img1.
 //
 // Caller must guarantee the two pixels are not identical — the early-zero
-// check is omitted here, matching v7.2.0.
+// check is omitted here.
 func colorDelta(img1, img2 []byte, k, m int, checkerboard bool) float64 {
 	r1 := float64(img1[k])
 	g1 := float64(img1[k+1])
@@ -341,9 +328,9 @@ func brightnessDelta(img []byte, k, m int, r1b, g1b, b1b, a1b uint8, checkerboar
 }
 
 // checkerboardBackground returns the RGB background color for a
-// semi-transparent pixel at byte offset k, replicating the golden-ratio
-// trick from v7.2.0. Each channel is either 48 or 207, producing a
-// tri-tone noisy background that breaks alpha symmetries.
+// semi-transparent pixel at byte offset k.
+// Each channel is either 48 or 207, producing a tri-tone
+// noisy background that breaks alpha symmetries.
 func checkerboardBackground(k int) (rb, gb, bb float64) {
 	rb = 48 + 159*float64(k%2)
 	// `(k / 1.618...) | 0` in JS truncates toward zero (works because k≥0).

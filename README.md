@@ -49,7 +49,7 @@ _ = png.Encode(file, out)
 Or get a freshly allocated diff in one call:
 
 ```go
-diff, n, err := pixelmatch.CompareToImage(a, b, pixelmatch.WithThreshold(0.1))
+diff, n, err := pixelmatch.CompareToImage(a, b)
 // diff is a *image.NRGBA
 ```
 
@@ -80,14 +80,24 @@ diff, n, err := pixelmatch.CompareToImage(a, b, pixelmatch.WithThreshold(0.1))
 
 ## Performance
 
-On a Xeon @ 2.10 GHz, comparing two 800×600 images:
+### Benchmark Results Summary
 
-```
-BenchmarkCompareNRGBA800x600    ~18.4 ms/op   208 MB/s   1 alloc  (image.Image API, NRGBA)
-BenchmarkCompareRGBA800x600     ~22.5 ms/op   170 MB/s   3 allocs (with un-premultiply)
+Command
+```sh
+go test -bench=Benchmark* -benchmem -count=10
 ```
 
-*p.s. that 1 allocation comes from the options handling.*
+### Benchmark Results Summary
+
+**Environment:**
+* **OS/Arch:** TODO
+* **CPU:** TODO
+
+| Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`CompareNRGBA800x600`** | 12.70ms ± 1% | 288.3MiB ± 1% | 0.000 ± 0% | 0.000 ± 0% |
+| **`CompareNoOutputNRGBA`** | 7.378ms ± 2% | 496.4MiB ± 2% | 0.000 ± 0% | 0.000 ± 0% |
+| **`CompareRGBA800x600`** | 13.75ms ± 26% | 266.4MiB ± 21% | 3.672MiB ± 0% | 2.000 ± 0% |
 
 ## Correctness
 

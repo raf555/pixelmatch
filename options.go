@@ -6,9 +6,9 @@ import (
 	"github.com/raf555/pixelmatch/internal/pixelmatch"
 )
 
-// Option configures a Compare or CompareToImage call. Options compose: pass
-// any number to a single call. Unspecified options take the package
-// defaults (see DefaultOptions for the underlying values).
+// Option configures a Compare or CompareToImage call.
+// Unspecified options take the package defaults
+// (see [DefaultOptions] for the underlying values).
 //
 // Example:
 //
@@ -18,14 +18,8 @@ import (
 //	    pixelmatch.WithDiffColor(255, 0, 255),
 //	    pixelmatch.WithOutput(out),
 //	)
-type Option func(*config)
+type Option func(config) config
 
-// config bundles the algorithm options and the (optional) output
-// destination for one Compare call. It's an internal type so the public
-// Option function-type can carry the output target alongside the
-// per-pixel parameters without exposing an *image.NRGBA field on the
-// byte-API Options struct (which has no business knowing about
-// image.Image).
 type config struct {
 	opts   pixelmatch.Options
 	output *image.NRGBA
@@ -38,40 +32,56 @@ func defaultConfig() config {
 // WithThreshold sets the matching threshold (0..1). Smaller is more
 // sensitive. Default 0.1.
 func WithThreshold(t float64) Option {
-	return func(c *config) { c.opts.Threshold = t }
+	return func(c config) config {
+		c.opts.Threshold = t
+		return c
+	}
 }
 
 // WithIncludeAA, if true, disables anti-aliased pixel detection so AA
 // pixels are counted as real differences. Default false.
 func WithIncludeAA(b bool) Option {
-	return func(c *config) { c.opts.IncludeAA = b }
+	return func(c config) config {
+		c.opts.IncludeAA = b
+		return c
+	}
 }
 
 // WithAlpha sets the opacity (0..1) of the original image in the diff
 // output. 0 = pure white, 1 = original brightness. Default 0.1.
 func WithAlpha(a float64) Option {
-	return func(c *config) { c.opts.Alpha = a }
+	return func(c config) config {
+		c.opts.Alpha = a
+		return c
+	}
 }
 
 // WithAAColor sets the RGB color used for anti-aliased pixels in the diff
 // output. Default 255, 255, 0 (yellow).
 func WithAAColor(r, g, b uint8) Option {
-	return func(c *config) { c.opts.AAColor = [3]uint8{r, g, b} }
+	return func(c config) config {
+		c.opts.AAColor = [3]uint8{r, g, b}
+		return c
+	}
 }
 
 // WithDiffColor sets the RGB color used for differing pixels in the diff
 // output. Default 255, 0, 0 (red).
 func WithDiffColor(r, g, b uint8) Option {
-	return func(c *config) { c.opts.DiffColor = [3]uint8{r, g, b} }
+	return func(c config) config {
+		c.opts.DiffColor = [3]uint8{r, g, b}
+		return c
+	}
 }
 
 // WithDiffColorAlt sets an alternative RGB color used for pixels in img2
 // that are darker than img1, letting you distinguish "added" from
 // "removed" content. By default no alt color is used.
 func WithDiffColorAlt(r, g, b uint8) Option {
-	return func(c *config) {
+	return func(c config) config {
 		c.opts.DiffColorAlt = [3]uint8{r, g, b}
 		c.opts.HasDiffColorAlt = true
+		return c
 	}
 }
 
@@ -79,14 +89,20 @@ func WithDiffColorAlt(r, g, b uint8) Option {
 // instead of over the (faded) original image. Anti-aliased pixels are not
 // drawn in mask mode. Default false.
 func WithDiffMask(b bool) Option {
-	return func(c *config) { c.opts.DiffMask = b }
+	return func(c config) config {
+		c.opts.DiffMask = b
+		return c
+	}
 }
 
 // WithCheckerboard controls whether semi-transparent pixels are blended
 // against a checkerboard pattern (true) or plain white (false). Default
-// true; pre-v7 pixelmatch behavior is false.
+// true.
 func WithCheckerboard(b bool) Option {
-	return func(c *config) { c.opts.Checkerboard = b }
+	return func(c config) config {
+		c.opts.Checkerboard = b
+		return c
+	}
 }
 
 // WithOutput sets the destination image to which the visual diff will be
@@ -94,11 +110,14 @@ func WithCheckerboard(b bool) Option {
 // does not produce a diff image (which is faster).
 //
 // The output's dimensions must match img1 and img2. The most efficient
-// case is an *image.NRGBA with a tight stride and zero origin, which is
+// case is an *[image.NRGBA] with a tight stride and zero origin, which is
 // written directly; other layouts go through an internal buffer.
 //
 // To get a freshly allocated diff image without managing the buffer
 // yourself, use CompareToImage instead.
 func WithOutput(out *image.NRGBA) Option {
-	return func(c *config) { c.output = out }
+	return func(c config) config {
+		c.output = out
+		return c
+	}
 }

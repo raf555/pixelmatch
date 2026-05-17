@@ -83,7 +83,7 @@ func TestPartialDifference(t *testing.T) {
 	img2 := make([]byte, len(img1))
 	copy(img2, img1)
 	// Change exactly 7 pixels.
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		idx := i * 4
 		img2[idx+0] = 200
 		img2[idx+1] = 200
