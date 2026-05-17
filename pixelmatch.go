@@ -1,3 +1,16 @@
+// Package pixelmatch is a native Go port of mapbox/pixelmatch:
+// the smallest, simplest and fastest pixel-level image comparison library.
+//
+// It compares two raw RGBA images (4 bytes per pixel: R, G, B, A) of equal
+// dimensions and optionally writes a diff image to an output buffer. It
+// returns the number of mismatched pixels.
+//
+// Original JS implementation: https://github.com/mapbox/pixelmatch.
+//
+// Algorithm references:
+//   - "Measuring perceived color difference using YIQ NTSC transmission color
+//     space in mobile applications" (Kotsarenko & Ramos, 2010).
+//   - "Anti-aliased Pixel and Intensity Slope Detector" (Vyšniauskas, 2009).
 package pixelmatch
 
 import (
@@ -9,17 +22,17 @@ import (
 )
 
 // Compare compares two images and returns the number of mismatched
-// pixels. By default no diff image is produced; pass WithOutput to write
+// pixels. By default no diff image is produced; pass [WithOutput] to write
 // a visual diff into a buffer of your choice.
 //
-// Compare accepts any image.Image as input. *image.NRGBA goes through a
-// zero-copy fast path; *image.RGBA un-premultiplies on the fly; other
-// types are converted via draw.Draw. For maximum performance, pass
-// *image.NRGBA (this is the layout pixelmatch operates on natively:
+// Compare accepts any [image.Image] as input. *[image.NRGBA] goes through a
+// zero-copy fast path; *[image.RGBA] un-premultiplies on the fly; other
+// types are converted via [draw.Draw]. For maximum performance, pass
+// *[image.NRGBA] (this is the layout pixelmatch operates on natively:
 // straight, non-premultiplied RGBA).
 //
 // Compare returns an error if the input images differ in size, if a
-// WithOutput target has the wrong size, or if any image is nil.
+// [WithOutput] target has the wrong size, or if any image is nil.
 func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 	if img1 == nil || img2 == nil {
 		return 0, ErrNilImage
@@ -88,7 +101,7 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 //	out := image.NewNRGBA(image.Rect(0, 0, w, h))
 //	n, err := Compare(img1, img2, append(opts, WithOutput(out))...)
 //
-// Passing WithOutput here is harmless but redundant — CompareToImage
+// Passing [WithOutput] here is harmless but redundant — [CompareToImage]
 // always returns its own allocated image.
 func CompareToImage(img1, img2 image.Image, opts ...Option) (*image.NRGBA, int, error) {
 	if img1 == nil {
@@ -191,6 +204,3 @@ func copyPixToNRGBA(src []byte, dst *image.NRGBA, w, h int) {
 		copy(dst.Pix[dstRow:dstRow+4*w], src[y*4*w:(y+1)*4*w])
 	}
 }
-
-// Compile-time assertion that *image.NRGBA satisfies draw.Image.
-var _ draw.Image = (*image.NRGBA)(nil)

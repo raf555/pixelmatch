@@ -49,7 +49,7 @@ _ = png.Encode(file, out)
 Or get a freshly allocated diff in one call:
 
 ```go
-diff, n, err := pixelmatch.CompareToImage(a, b, pixelmatch.WithThreshold(0.1))
+diff, n, err := pixelmatch.CompareToImage(a, b)
 // diff is a *image.NRGBA
 ```
 
@@ -74,18 +74,30 @@ diff, n, err := pixelmatch.CompareToImage(a, b, pixelmatch.WithThreshold(0.1))
 - **`*image.NRGBA`** with tight stride and zero origin: **zero-copy** fast
   path. This is the recommended type — it's the format pixelmatch uses
   natively (straight, non-premultiplied RGBA).
-- **`*image.RGBA`**: converted by un-premultiplying alpha. ~24% slower.
+- **`*image.RGBA`**: converted by un-premultiplying alpha. ~10% slower.
 - **anything else** (`Gray`, `Paletted`, `YCbCr`, etc.): handled via
   `draw.Draw` to a temporary NRGBA. Always correct, slower.
 
 ## Performance
 
-On a Xeon @ 2.10 GHz, comparing two 800×600 images:
+### Benchmark Results Summary
 
+**Command**
+
+```sh
+go test -bench=. -benchmem -count=10 -cpu 1
 ```
-BenchmarkCompareNRGBA800x600    ~18.4 ms/op   208 MB/s   1 alloc  (image.Image API, NRGBA)
-BenchmarkCompareRGBA800x600     ~22.5 ms/op   170 MB/s   3 allocs (with un-premultiply)
-```
+
+**Environment:**
+* **OS/Arch:** linux/amd64
+* **Package:** github.com/raf555/pixelmatch
+* **CPU:** AMD EPYC 9634 84-Core Processor
+
+| Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`CompareNRGBA800x600`** | 16.05ms ± 3% | 228.2MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
+| **`CompareNoOutputNRGBA`** | 9.137ms ± 3% | 400.8MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
+| **`CompareRGBA800x600`** | 17.76ms ± 3% | 206.2MiB ± 4% | 3.672MiB ± 0% | 3.000 ± 0% |
 
 *p.s. that 1 allocation comes from the options handling.*
 
@@ -95,8 +107,7 @@ The port is verified byte-for-byte against the reference JavaScript
 implementation across 14 test cases covering random images, gradient edges,
 semi-transparency (both checkerboard and white-background modes), diff
 masks, custom colors, stripe patterns, single-pixel images, and degenerate
-aspect ratios. See `pixelmatch_test.go`, `cross_test.go`, and
-`image_test.go`.
+aspect ratios. See the test files.
 
 ## License
 

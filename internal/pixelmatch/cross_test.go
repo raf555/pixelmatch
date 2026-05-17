@@ -83,7 +83,7 @@ func TestAgainstJSReference(t *testing.T) {
 			// Compare byte-for-byte. Report the first few mismatches with
 			// pixel coordinates to make debugging easier.
 			mismatches := 0
-			for i := 0; i < len(gotOut); i++ {
+			for i := range gotOut {
 				if gotOut[i] != wantDiff[i] {
 					if mismatches < 5 {
 						pixIdx := i / 4

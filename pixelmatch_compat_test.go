@@ -1,4 +1,4 @@
-package pixelmatch_test
+package pixelmatch
 
 import (
 	"fmt"
@@ -7,22 +7,20 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/raf555/pixelmatch"
 )
 
 func TestCompatiblity(t *testing.T) {
 	tcs := []struct {
 		img1, img2, diff string
 		expectedMismatch int
-		opts             []pixelmatch.Option
+		opts             []Option
 	}{
 		{
 			img1:             "1a",
 			img2:             "1b",
 			diff:             "1diff",
 			expectedMismatch: 143,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0.05)},
+			opts:             []Option{WithThreshold(0.05)},
 		},
 		{
 			img1:             "1a",
@@ -35,9 +33,9 @@ func TestCompatiblity(t *testing.T) {
 			img2:             "1b",
 			diff:             "1diffmask",
 			expectedMismatch: 143,
-			opts: []pixelmatch.Option{
-				pixelmatch.WithThreshold(0.05),
-				pixelmatch.WithDiffMask(true),
+			opts: []Option{
+				WithThreshold(0.05),
+				WithDiffMask(true),
 			},
 		},
 		{
@@ -45,9 +43,9 @@ func TestCompatiblity(t *testing.T) {
 			img2:             "1a",
 			diff:             "1emptydiffmask",
 			expectedMismatch: 0,
-			opts: []pixelmatch.Option{
-				pixelmatch.WithThreshold(0),
-				pixelmatch.WithDiffMask(true),
+			opts: []Option{
+				WithThreshold(0),
+				WithDiffMask(true),
 			},
 		},
 		{
@@ -55,11 +53,11 @@ func TestCompatiblity(t *testing.T) {
 			img2:             "2b",
 			diff:             "2diff",
 			expectedMismatch: 12437,
-			opts: []pixelmatch.Option{
-				pixelmatch.WithThreshold(0.05),
-				pixelmatch.WithAlpha(0.5),
-				pixelmatch.WithAAColor(0, 192, 0),
-				pixelmatch.WithDiffColor(255, 0, 255),
+			opts: []Option{
+				WithThreshold(0.05),
+				WithAlpha(0.5),
+				WithAAColor(0, 192, 0),
+				WithDiffColor(255, 0, 255),
 			},
 		},
 		{
@@ -67,49 +65,49 @@ func TestCompatiblity(t *testing.T) {
 			img2:             "3b",
 			diff:             "3diff",
 			expectedMismatch: 212,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0.05)},
+			opts:             []Option{WithThreshold(0.05)},
 		},
 		{
 			img1:             "4a",
 			img2:             "4b",
 			diff:             "4diff",
 			expectedMismatch: 36049,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0.05)},
+			opts:             []Option{WithThreshold(0.05)},
 		},
 		{
 			img1:             "5a",
 			img2:             "5b",
 			diff:             "5diff",
 			expectedMismatch: 6,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0.05)},
+			opts:             []Option{WithThreshold(0.05)},
 		},
 		{
 			img1:             "6a",
 			img2:             "6b",
 			diff:             "6diff",
 			expectedMismatch: 51,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0.05)},
+			opts:             []Option{WithThreshold(0.05)},
 		},
 		{
 			img1:             "6a",
 			img2:             "6a",
 			diff:             "6empty",
 			expectedMismatch: 0,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0)},
+			opts:             []Option{WithThreshold(0)},
 		},
 		{
 			img1:             "7a",
 			img2:             "7b",
 			diff:             "7diff",
 			expectedMismatch: 2448,
-			opts:             []pixelmatch.Option{pixelmatch.WithDiffColorAlt(0, 255, 0)},
+			opts:             []Option{WithDiffColorAlt(0, 255, 0)},
 		},
 		{
 			img1:             "8a",
 			img2:             "5b",
 			diff:             "8diff",
 			expectedMismatch: 32896,
-			opts:             []pixelmatch.Option{pixelmatch.WithThreshold(0.05)},
+			opts:             []Option{WithThreshold(0.05)},
 		},
 	}
 
@@ -143,7 +141,7 @@ func TestCheckerboard(t *testing.T) {
 	img2 := image.NewNRGBA(image.Rect(0, 0, 1, 1))
 	img2.Pix = []byte{127, 127, 127, 255} // opaque gray
 
-	n, err := pixelmatch.Compare(img1, img2, pixelmatch.WithCheckerboard(false))
+	n, err := Compare(img1, img2, WithCheckerboard(false))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +149,7 @@ func TestCheckerboard(t *testing.T) {
 		t.Errorf("checkerboard=false: got %d diffs, want 0", n)
 	}
 
-	n, err = pixelmatch.Compare(img1, img2)
+	n, err = Compare(img1, img2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +158,7 @@ func TestCheckerboard(t *testing.T) {
 	}
 }
 
-func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...pixelmatch.Option) (string, func(*testing.T)) {
+func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...Option) (string, func(*testing.T)) {
 	name := fmt.Sprintf("comparing %s to %s against %s", imgPath1, imgPath2, diffImgPath)
 
 	return name, func(t *testing.T) {
@@ -169,18 +167,18 @@ func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts
 		img1 := mustReadImage(t, imgPath1)
 		img2 := mustReadImage(t, imgPath2)
 
-		diffNRGBA, mismatch, err := pixelmatch.CompareToImage(img1, img2, opts...)
+		diffNRGBA, mismatch, err := CompareToImage(img1, img2, opts...)
 		if err != nil {
 			t.Errorf("diffTest: unexpected error on comparing image 1 and 2 with output diff: %s", err.Error())
 		}
 
-		mismatch2, err := pixelmatch.Compare(img1, img2, opts...)
+		mismatch2, err := Compare(img1, img2, opts...)
 		if err != nil {
 			t.Errorf("diffTest: unexpected error on comparing image 1 and 2 without output diff: %s", err.Error())
 		}
 
 		expectedDiff := mustReadImage(t, diffImgPath)
-		mismatch3, err := pixelmatch.Compare(expectedDiff, diffNRGBA, opts...)
+		mismatch3, err := Compare(expectedDiff, diffNRGBA, opts...)
 		if err != nil {
 			t.Errorf("diffTest: unexpected error on comparing expected diff and output diff: %s", err.Error())
 		}
