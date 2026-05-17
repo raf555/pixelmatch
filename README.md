@@ -74,7 +74,7 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 - **`*image.NRGBA`** with tight stride and zero origin: **zero-copy** fast
   path. This is the recommended type — it's the format pixelmatch uses
   natively (straight, non-premultiplied RGBA).
-- **`*image.RGBA`**: converted by un-premultiplying alpha. ~8-10% slower.
+- **`*image.RGBA`**: converted by un-premultiplying alpha. ~10% slower.
 - **anything else** (`Gray`, `Paletted`, `YCbCr`, etc.): handled via
   `draw.Draw` to a temporary NRGBA. Always correct, slower.
 
@@ -95,11 +95,11 @@ go test -bench=. -benchmem -count=10 -cpu 1
 
 | Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **`CompareNRGBA800x600`** | 15.99ms ± 3% | 229.0MiB ± 3% | 0.000 ± 0% | 0.000 ± 0% |
-| **`CompareNoOutputNRGBA`** | 9.230ms ± 4% | 396.8MiB ± 4% | 0.000 ± 0% | 0.000 ± 0% |
-| **`CompareRGBA800x600`** | 17.66ms ± 3% | 207.3MiB ± 3% | 3.672MiB ± 0% | 2.000 ± 0% |
+| **`CompareNRGBA800x600`** | 16.05ms ± 3% | 228.2MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
+| **`CompareNoOutputNRGBA`** | 9.137ms ± 3% | 400.8MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
+| **`CompareRGBA800x600`** | 17.76ms ± 3% | 206.2MiB ± 4% | 3.672MiB ± 0% | 3.000 ± 0% |
 
-p.s. that 1 allocation comes from the options handling.
+*p.s. that 1 allocation comes from the options handling.*
 
 ## Correctness
 
