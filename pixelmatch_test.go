@@ -2,7 +2,6 @@ package pixelmatch
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"image"
 	"image/color"
@@ -240,8 +239,7 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			img1Pix, _ := base64.StdEncoding.DecodeString(c.Img1)
-			img2Pix, _ := base64.StdEncoding.DecodeString(c.Img2)
+			img1Pix, img2Pix := c.Img1, c.Img2
 
 			// Build opts the same way the byte test does.
 			var opts []Option
@@ -294,8 +292,7 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 			if n != c.N {
 				t.Errorf("diff count: got %d, want %d", n, c.N)
 			}
-			wantDiff, _ := base64.StdEncoding.DecodeString(c.Diff)
-			if !bytes.Equal(diff.Pix, wantDiff) {
+			if !bytes.Equal(diff.Pix, c.Diff) {
 				t.Errorf("diff buffer differs from JS reference")
 			}
 		})
