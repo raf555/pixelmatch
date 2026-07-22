@@ -1,7 +1,6 @@
 package pixelmatch
 
 import (
-	"encoding/base64"
 	"testing"
 
 	"github.com/raf555/pixelmatch/internal/testutil"
@@ -26,18 +25,7 @@ func TestAgainstJSReference(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			img1, err := base64.StdEncoding.DecodeString(c.Img1)
-			if err != nil {
-				t.Fatal(err)
-			}
-			img2, err := base64.StdEncoding.DecodeString(c.Img2)
-			if err != nil {
-				t.Fatal(err)
-			}
-			wantDiff, err := base64.StdEncoding.DecodeString(c.Diff)
-			if err != nil {
-				t.Fatal(err)
-			}
+			img1, img2, wantDiff := c.Img1, c.Img2, c.Diff
 
 			opts := DefaultOptions()
 			if c.Opts.Threshold != nil {
