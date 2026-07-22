@@ -55,6 +55,9 @@ func TestAgainstJSReference(t *testing.T) {
 			if c.Opts.Checkerboard != nil {
 				opts.Checkerboard = *c.Opts.Checkerboard
 			}
+			if c.Opts.WindowSize != nil {
+				opts.WindowSize = *c.Opts.WindowSize
+			}
 			if c.Opts.DiffColor != nil {
 				opts.DiffColor = toU8(c.Opts.DiffColor)
 			}

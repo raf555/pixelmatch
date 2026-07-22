@@ -260,6 +260,9 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 			if c.Opts.Checkerboard != nil {
 				opts = append(opts, WithCheckerboard(*c.Opts.Checkerboard))
 			}
+			if c.Opts.WindowSize != nil {
+				opts = append(opts, WithWindowSize(*c.Opts.WindowSize))
+			}
 			if c.Opts.DiffColor != nil {
 				opts = append(opts, WithDiffColor(
 					uint8((*c.Opts.DiffColor)[0]),
