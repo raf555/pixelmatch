@@ -9,7 +9,9 @@ import (
 // defaults; the zero value of Options is NOT a useful default.
 type Options struct {
 	// Threshold is the matching threshold (0..1). Smaller values make the
-	// comparison more sensitive. Default 0.1.
+	// comparison more sensitive. It is the maximum acceptable OKLab HyAB
+	// distance between two colors, where 1.0 is the distance between black
+	// and white. Default 0.1.
 	Threshold float64
 
 	// Alpha is the blending factor of unchanged pixels in the diff output:
@@ -28,6 +30,12 @@ type Options struct {
 	// (only when HasDiffColorAlt is true), letting you distinguish "added"
 	// from "removed" content.
 	DiffColorAlt [3]uint8
+
+	// WindowSize, if positive, makes Match return the largest number of
+	// differing pixels found in any WindowSize x WindowSize region instead
+	// of the total count. The value is clamped to the image dimensions.
+	// Zero (the default) reports the total count.
+	WindowSize int
 
 	// IncludeAA, when true, disables anti-aliased pixel detection (so AA
 	// pixels are counted as real differences). Default false.
@@ -59,10 +67,22 @@ func DefaultOptions() Options {
 	}
 }
 
+// Per-pixel mask states used by the windowed post-pass. Counted diffs get an
+// odd value so the scan can test them with a single AND.
+const (
+	maskSame     uint8 = 0
+	maskDiff     uint8 = 1
+	maskExcluded uint8 = 2
+)
+
 // Match compares two RGBA images (4 bytes per pixel) of size width x height
 // and returns the number of pixels that differ. If output is non-nil, it
 // must be the same length as img1/img2, and a visual diff is written into
 // it.
+//
+// If Options.WindowSize is positive, the return value is instead the largest
+// number of differing pixels in any window of that size; see MaxWindowDiff
+// in the package documentation.
 //
 // img1, img2, and output (if provided) must all have length width*height*4.
 func Match(img1, img2, output []byte, width, height int, opts *Options) (int, error) {
@@ -100,8 +120,9 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 		return 0, nil
 	}
 
-	// 35215 is the maximum possible value for the YIQ difference metric.
-	maxDelta := 35215.0 * o.Threshold * o.Threshold
+	// Maximum acceptable OKLab HyAB distance between two colors; 1.0 is the
+	// distance between black and white, so the threshold is used directly.
+	maxDelta := o.Threshold
 
 	aaR, aaG, aaB := o.AAColor[0], o.AAColor[1], o.AAColor[2]
 	diffR, diffG, diffB := o.DiffColor[0], o.DiffColor[1], o.DiffColor[2]
@@ -110,28 +131,42 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 		altR, altG, altB = o.DiffColorAlt[0], o.DiffColorAlt[1], o.DiffColorAlt[2]
 	}
 
+	// The per-pixel mask is only allocated in windowed mode, keeping the
+	// default path allocation-free.
+	var mask []uint8
+	if o.WindowSize > 0 {
+		mask = make([]uint8, width*height)
+	}
+	// First and last row holding a counted diff, to bound the window scan.
+	firstDiffY, lastDiffY := -1, 0
+
 	diff := 0
 	pos := 0
 	pixels := width * height
 	for i := range pixels {
-		// Skip the YIQ math entirely when the 4-byte pixel words are
+		// Skip the color math entirely when the 4-byte pixel words are
 		// identical — a common case in screenshot diffs.
-		var delta float64
+		var delta int
 		if !equalPixel(img1, img2, pos) {
-			delta = colorDelta(img1, img2, pos, pos, o.Checkerboard)
+			delta = colorDelta(img1, img2, pos, pos, o.Checkerboard, maxDelta)
 		}
 
-		if math.Abs(delta) > maxDelta {
+		if delta != 0 {
 			x := i % width
 			y := i / width
 
 			isExcludedAA := !o.IncludeAA &&
-				(antialiased(img1, x, y, width, height, img2, o.Checkerboard) ||
-					antialiased(img2, x, y, width, height, img1, o.Checkerboard))
+				(antialiased(img1, x, y, width, height, img2) ||
+					antialiased(img2, x, y, width, height, img1))
 
 			if isExcludedAA {
+				// One of the pixels is anti-aliasing: draw it in the AA
+				// color and do not count it as a difference.
 				if output != nil && !o.DiffMask {
 					drawPixel(output, pos, aaR, aaG, aaB)
+				}
+				if mask != nil {
+					mask[i] = maskExcluded
 				}
 			} else {
 				if output != nil {
@@ -140,6 +175,13 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 					} else {
 						drawPixel(output, pos, diffR, diffG, diffB)
 					}
+				}
+				if mask != nil {
+					mask[i] = maskDiff
+					if firstDiffY < 0 {
+						firstDiffY = y
+					}
+					lastDiffY = y
 				}
 				diff++
 			}
@@ -150,7 +192,79 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 		pos += 4
 	}
 
-	return diff, nil
+	if mask == nil {
+		return diff, nil
+	}
+	return maxWindowDiff(mask, width, height, o.WindowSize, firstDiffY, lastDiffY), nil
+}
+
+// maxWindowDiff returns the largest number of diff pixels (mask value
+// maskDiff) contained in any n x n window, with n clamped to the image
+// dimensions. Anti-aliased pixels are excluded by construction, since only
+// counted diffs are given an odd mask value.
+//
+// The scan keeps a per-column count over a sliding band of n rows, updated
+// incrementally as rows enter and leave, then slides a horizontal running
+// sum across it. Bands whose total cannot beat the current maximum skip the
+// horizontal pass, which is most of them for a typical sparse diff.
+func maxWindowDiff(mask []uint8, width, height, windowSize, firstDiffY, lastDiffY int) int {
+	if firstDiffY < 0 {
+		return 0 // every difference was excluded as anti-aliasing
+	}
+
+	n := min(windowSize, width, height)
+	n = max(n, 1)
+
+	colSum := make([]int32, width)
+	maxCount, bandTotal := 0, 0
+
+	// Rows before firstDiffY are empty, so starting the scan there keeps
+	// colSum correct without any special initialization; rows after
+	// lastDiffY only matter until the band has drained.
+	yEnd := min(height-1, lastDiffY+n-1)
+
+	for y := firstDiffY; y <= yEnd; y++ {
+		rowStart := y * width
+		leaving := y - n
+
+		if leaving >= 0 {
+			leavingStart := leaving * width
+			for x := range width {
+				d := int32(mask[rowStart+x]&1) - int32(mask[leavingStart+x]&1)
+				colSum[x] += d
+				bandTotal += int(d)
+			}
+		} else {
+			for x := range width {
+				e := int32(mask[rowStart+x] & 1)
+				colSum[x] += e
+				bandTotal += int(e)
+			}
+			// Only scan windows that fit vertically.
+			if y < n-1 {
+				continue
+			}
+		}
+
+		// No window in this band can hold more than the band itself.
+		if bandTotal <= maxCount {
+			continue
+		}
+
+		windowSum := 0
+		for x := range n - 1 {
+			windowSum += int(colSum[x])
+		}
+		for x := n - 1; x < width; x++ {
+			windowSum += int(colSum[x])
+			if windowSum > maxCount {
+				maxCount = windowSum
+			}
+			windowSum -= int(colSum[x-n+1])
+		}
+	}
+
+	return maxCount
 }
 
 // equalPixel reports whether the 4-byte RGBA pixel at the same offset in
@@ -163,7 +277,7 @@ func equalPixel(img1, img2 []byte, pos int) bool {
 // antialiased reports whether the pixel at (x1, y1) in img is likely part of
 // anti-aliasing, by inspecting its 8 neighbors and corresponding pixels in
 // img2. Based on Vyšniauskas (2009).
-func antialiased(img []byte, x1, y1, width, height int, img2 []byte, checkerboard bool) bool {
+func antialiased(img []byte, x1, y1, width, height int, img2 []byte) bool {
 	x0 := max(x1-1, 0)
 	y0 := max(y1-1, 0)
 	x2 := min(x1+1, width-1)
@@ -189,7 +303,7 @@ func antialiased(img []byte, x1, y1, width, height int, img2 []byte, checkerboar
 			if x == x1 && y == y1 {
 				continue
 			}
-			delta := brightnessDelta(img, pos4, (y*width+x)*4, cr, cg, cb, ca, checkerboard)
+			delta := brightnessDelta(img, (y*width+x)*4, cr, cg, cb, ca)
 
 			switch {
 			case delta == 0:
@@ -219,12 +333,28 @@ func antialiased(img []byte, x1, y1, width, height int, img2 []byte, checkerboar
 // hasManySiblings reports whether the pixel at (x1, y1) has 3+ adjacent
 // pixels with the exact same RGBA value (compared as 32-bit words).
 func hasManySiblings(img []byte, x1, y1, width, height int) bool {
+	pos1 := (y1*width + x1) * 4
+	center := binary.LittleEndian.Uint32(img[pos1 : pos1+4])
+
+	// Interior pixels have all 8 neighbors, so the walk can be unrolled
+	// with no per-neighbor edge handling.
+	if x1 > 0 && x1 < width-1 && y1 > 0 && y1 < height-1 {
+		row := width * 4
+		eq := b2i(center == binary.LittleEndian.Uint32(img[pos1-row-4:pos1-row])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1-4:pos1])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1+row-4:pos1+row])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1-row:pos1-row+4])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1+row:pos1+row+4])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1-row+4:pos1-row+8])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1+4:pos1+8])) +
+			b2i(center == binary.LittleEndian.Uint32(img[pos1+row+4:pos1+row+8]))
+		return eq > 2
+	}
+
 	x0 := max(x1-1, 0)
 	y0 := max(y1-1, 0)
 	x2 := min(x1+1, width-1)
 	y2 := min(y1+1, height-1)
-	centerPos := (y1*width + x1) * 4
-	center := binary.LittleEndian.Uint32(img[centerPos : centerPos+4])
 
 	zeroes := 0
 	if x1 == x0 || x1 == x2 || y1 == y0 || y1 == y2 {
@@ -248,53 +378,30 @@ func hasManySiblings(img []byte, x1, y1, width, height int) bool {
 	return false
 }
 
-// colorDelta returns the signed squared YIQ perceptual color distance
-// between img1[k..k+4] and img2[m..m+4]. The sign encodes whether the img2
-// pixel is darker (positive) or lighter (negative) than img1.
-//
-// Caller must guarantee the two pixels are not identical — the early-zero
-// check is omitted here.
-func colorDelta(img1, img2 []byte, k, m int, checkerboard bool) float64 {
-	r1 := float64(img1[k])
-	g1 := float64(img1[k+1])
-	b1 := float64(img1[k+2])
-	a1 := float64(img1[k+3])
-
-	r2 := float64(img2[m])
-	g2 := float64(img2[m+1])
-	b2 := float64(img2[m+2])
-	a2 := float64(img2[m+3])
-
-	dr := r1 - r2
-	dg := g1 - g2
-	db := b1 - b2
-	da := a1 - a2
-
-	if a1 < 255 || a2 < 255 {
-		rb, gb, bb := 255.0, 255.0, 255.0
-		if checkerboard {
-			rb, gb, bb = checkerboardBackground(k)
-		}
-		dr = (r1*a1 - r2*a2 - rb*da) / 255
-		dg = (g1*a1 - g2*a2 - gb*da) / 255
-		db = (b1*a1 - b2*a2 - bb*da) / 255
+func b2i(b bool) int {
+	if b {
+		return 1
 	}
-
-	y := dr*0.29889531 + dg*0.58662247 + db*0.11448223
-	i := dr*0.59597799 - dg*0.27417610 - db*0.32180189
-	q := dr*0.21147017 - dg*0.52261711 + db*0.31114694
-
-	delta := 0.5053*y*y + 0.299*i*i + 0.1957*q*q
-
-	if y > 0 {
-		return -delta
-	}
-	return delta
+	return 0
 }
 
-// brightnessDelta is the brightness-only variant used by the AA detector,
-// with the center pixel's RGBA hoisted out of the neighbor loop.
-func brightnessDelta(img []byte, k, m int, r1b, g1b, b1b, a1b uint8, checkerboard bool) float64 {
+// brightnessDelta is the brightness-only color delta used by the AA
+// detector, with the center pixel's RGBA hoisted out of the neighbor loop.
+//
+// It stays on gamma-space Rec.601 luma rather than the OKLab distance used
+// by colorDelta: the detector only needs a cheap monotonic scalar to find
+// the direction of an intensity ramp (its darkest and brightest neighbor),
+// and OKLab lightness both detects AA worse in dark regions and costs far
+// more, being evaluated up to 16 times per candidate pixel.
+//
+// Semi-transparent pixels are composited over fixed white rather than the
+// checkerboard used by colorDelta: a ramp structure test needs a
+// deterministic background, and a pseudo-random per-position one distorts
+// the very ramps it looks for. When the composited luma delta cancels out
+// exactly but alpha differs, the alpha delta gives the ramp direction, so
+// only pixels equal in both premultiplied luma and alpha count as equal
+// siblings.
+func brightnessDelta(img []byte, m int, r1b, g1b, b1b, a1b uint8) float64 {
 	r2 := float64(img[m])
 	g2 := float64(img[m+1])
 	b2 := float64(img[m+2])
@@ -315,28 +422,17 @@ func brightnessDelta(img []byte, k, m int, r1b, g1b, b1b, a1b uint8, checkerboar
 	}
 
 	if a1 < 255 || a2 < 255 {
-		rb, gb, bb := 255.0, 255.0, 255.0
-		if checkerboard {
-			rb, gb, bb = checkerboardBackground(k)
+		dr = (r1*a1 - r2*a2 - 255*da) / 255
+		dg = (g1*a1 - g2*a2 - 255*da) / 255
+		db = (b1*a1 - b2*a2 - 255*da) / 255
+		d := dr*0.29889531 + dg*0.58662247 + db*0.11448223
+		if d == 0 && da != 0 {
+			return da / 2
 		}
-		dr = (r1*a1 - r2*a2 - rb*da) / 255
-		dg = (g1*a1 - g2*a2 - gb*da) / 255
-		db = (b1*a1 - b2*a2 - bb*da) / 255
+		return d
 	}
 
 	return dr*0.29889531 + dg*0.58662247 + db*0.11448223
-}
-
-// checkerboardBackground returns the RGB background color for a
-// semi-transparent pixel at byte offset k.
-// Each channel is either 48 or 207, producing a tri-tone
-// noisy background that breaks alpha symmetries.
-func checkerboardBackground(k int) (rb, gb, bb float64) {
-	rb = 48 + 159*float64(k%2)
-	// `(k / 1.618...) | 0` in JS truncates toward zero (works because k≥0).
-	gb = 48 + 159*float64(int(float64(k)/1.618033988749895)%2)
-	bb = 48 + 159*float64(int(float64(k)/2.618033988749895)%2)
-	return
 }
 
 // drawPixel writes an opaque RGB pixel at byte offset pos in output.

@@ -18,6 +18,7 @@ type RefCase struct {
 		Alpha        *float64 `json:"alpha"`
 		DiffMask     *bool    `json:"diffMask"`
 		Checkerboard *bool    `json:"checkerboard"`
+		WindowSize   *int     `json:"windowSize"`
 		DiffColor    *[3]int  `json:"diffColor"`
 		DiffColorAlt *[3]int  `json:"diffColorAlt"`
 		AAColor      *[3]int  `json:"aaColor"`

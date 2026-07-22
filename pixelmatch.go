@@ -8,8 +8,10 @@
 // Original JS implementation: https://github.com/mapbox/pixelmatch.
 //
 // Algorithm references:
-//   - "Measuring perceived color difference using YIQ NTSC transmission color
-//     space in mobile applications" (Kotsarenko & Ramos, 2010).
+//   - "A perceptual color space for image processing" (Ottosson, 2020) — the
+//     OKLab color space used for color difference.
+//   - "Distance metrics for very large color differences" (Abasi et al., 2019)
+//     — the OKLab HyAB metric used to compare colors.
 //   - "Anti-aliased Pixel and Intensity Slope Detector" (Vyšniauskas, 2009).
 package pixelmatch
 
@@ -23,7 +25,8 @@ import (
 
 // Compare compares two images and returns the number of mismatched
 // pixels. By default no diff image is produced; pass [WithOutput] to write
-// a visual diff into a buffer of your choice.
+// a visual diff into a buffer of your choice. Pass [WithWindowSize] to get
+// the densest local diff count instead of the image-wide total.
 //
 // Compare accepts any [image.Image] as input. *[image.NRGBA] goes through a
 // zero-copy fast path; *[image.RGBA] un-premultiplies on the fly; other

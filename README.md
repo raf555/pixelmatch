@@ -7,7 +7,8 @@ A native Go port of [mapbox/pixelmatch](https://github.com/mapbox/pixelmatch)
 Pure Go, zero external dependencies, no cgo.
 
 Features accurate **anti-aliased pixel detection** and **perceptual color
-difference metrics** (YIQ NTSC color space, per Kotsarenko & Ramos 2010).
+difference metrics** (OKLab color space per Ottosson 2020, compared with the
+HyAB metric of Abasi et al. 2019).
 
 ## Install
 
@@ -65,7 +66,35 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 | `WithDiffColorAlt(r,g,b)` | unset | alt color for darker-in-img2 pixels |
 | `WithDiffMask(false)` | `false` | draw diff over transparent background |
 | `WithCheckerboard(true)` | `true` | blend semi-transparent pixels against checkerboard |
+| `WithWindowSize(n)` | unset | report the densest n×n local diff count instead of the total |
 | `WithOutput(out)` | unset | write visual diff into the given `*image.NRGBA` |
+
+The threshold is the maximum acceptable OKLab HyAB distance between two
+colors, normalized so that black-to-white is exactly `1.0`.
+
+## Windowed diff density
+
+By default `Compare` returns the total number of differing pixels. With
+`WithWindowSize(n)` it instead returns the largest number of diff pixels
+found in any n×n region (`n` is clamped to the image dimensions, and
+anti-aliased pixels are never counted):
+
+```go
+n, err := pixelmatch.Compare(a, b, pixelmatch.WithWindowSize(32))
+if float64(n)/(32*32) > 0.05 {
+    // a dense cluster of differences — a real regression
+}
+```
+
+This makes the result robust to scattered noise. Spread-out speckle from GPU
+dithering or sub-pixel anti-aliasing never packs densely into a single
+window, while a genuine regression does. Failing on density rather than
+raw count stays comparable across image sizes, so you can run a stricter
+threshold without tripping over noise. The total count is just the
+degenerate whole-image window.
+
+The diff image, if requested, is unaffected — it still marks every differing
+pixel.
 
 ## Image type handling
 
@@ -81,6 +110,10 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 ## Performance
 
 ### Benchmark Results Summary
+
+Figures below were measured against the previous YIQ implementation. In a
+same-machine re-run the OKLab switch came out neutral to marginally faster,
+but these numbers predate it and are worth re-measuring on your hardware.
 
 **Command**
 
@@ -104,10 +137,23 @@ go test -bench=. -benchmem -count=10 -cpu 1
 ## Correctness
 
 The port is verified byte-for-byte against the reference JavaScript
-implementation across 14 test cases covering random images, gradient edges,
-semi-transparency (both checkerboard and white-background modes), diff
-masks, custom colors, stripe patterns, single-pixel images, and degenerate
-aspect ratios. See the test files.
+implementation across 25 generated test cases covering random images,
+gradient edges, semi-transparency (both checkerboard and white-background
+modes), diff masks, custom colors, stripe patterns, single-pixel images,
+degenerate aspect ratios, near-black ramps that exercise the Lr toe
+correction, saturated hue pairs, the alpha-tiebreak path in the anti-aliasing detector, and every windowed-count mode. It is
+additionally checked against all 12 upstream PNG fixtures, asserting both the
+expected diff count and byte-identical diff output. See the test files.
+
+One caveat worth knowing: the reference implementation approximates
+sRGB-to-linear conversion and the cube root with interpolated lookup tables,
+which this port reproduces. Go's `math.Pow` and `math.Cbrt` disagree with
+V8's by 1 ULP on some table entries, so the tables are not bit-identical
+even though every value is within one ULP. A 14.7M-pixel cross-check across
+seven thresholds and both blending modes produced zero differing output
+bytes, but exact parity is empirical here rather than structural. Embedding
+the reference tables verbatim would make it structural, at the cost of ~80KB
+of generated source.
 
 ## License
 

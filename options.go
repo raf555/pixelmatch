@@ -99,6 +99,25 @@ func WithCheckerboard(b bool) Option {
 	}
 }
 
+// WithWindowSize makes Compare report the largest number of differing
+// pixels found in any n×n window instead of the total across the image.
+// n is clamped to the image dimensions; passing 0 or a negative value
+// restores the default total count.
+//
+// This makes a comparison robust to scattered noise: speckle from GPU
+// dithering or sub-pixel anti-aliasing never packs densely into one window,
+// while a real regression does. Failing a test on density
+// (result / n² > tau) stays comparable across image sizes, so a stricter
+// threshold can catch smaller real changes without tripping over noise.
+//
+// The diff image, if requested, is unaffected — it still marks every
+// differing pixel.
+func WithWindowSize(n int) Option {
+	return func(c *config) {
+		c.opts.WindowSize = n
+	}
+}
+
 // WithOutput sets the destination image to which the visual diff will be
 // written. Without this option, Compare only counts mismatched pixels and
 // does not produce a diff image (which is faster).
