@@ -21,20 +21,20 @@ func TestCompatiblity(t *testing.T) {
 			img1:             "1a",
 			img2:             "1b",
 			diff:             "1diff",
-			expectedMismatch: 154,
+			expectedMismatch: 152,
 			opts:             []Option{WithThreshold(0.05)},
 		},
 		{
 			img1:             "1a",
 			img2:             "1b",
 			diff:             "1diffdefaultthreshold",
-			expectedMismatch: 120,
+			expectedMismatch: 121,
 		},
 		{
 			img1:             "1a",
 			img2:             "1b",
 			diff:             "1diffmask",
-			expectedMismatch: 154,
+			expectedMismatch: 152,
 			opts: []Option{
 				WithThreshold(0.05),
 				WithDiffMask(true),
@@ -117,6 +117,56 @@ func TestCompatiblity(t *testing.T) {
 		name, test := diffTest(tc.img1, tc.img2, tc.diff, tc.expectedMismatch, tc.opts...)
 		t.Run(name, test)
 	}
+}
+
+// TestCompatibilityIgnoreMask mirrors the reference suite's ignoreMask
+// fixtures. Upstream builds the mask with the first half of the pixels
+// marked as ignored (mask[i] = 1 when i <= len/2, else 0), matching the
+// JS `index > length / 2` construction so byte-for-byte diff equality holds.
+func TestCompatibilityIgnoreMask(t *testing.T) {
+	tcs := []struct {
+		img1, img2, diff string
+		expectedMismatch int
+		opts             []Option
+	}{
+		{
+			img1:             "9a",
+			img2:             "9b",
+			diff:             "9diff",
+			expectedMismatch: 12422,
+			opts:             []Option{WithThreshold(0.05)},
+		},
+		{
+			img1:             "10a",
+			img2:             "10b",
+			diff:             "10diff",
+			expectedMismatch: 0,
+			opts:             []Option{WithThreshold(0.05)},
+		},
+	}
+
+	for _, tc := range tcs {
+		img := mustReadImage(t, tc.img1)
+		b := img.Bounds()
+		mask := halfIgnoreMask(b.Dx() * b.Dy())
+		opts := append([]Option{}, tc.opts...)
+		opts = append(opts, WithIgnoreMask(mask))
+
+		name, test := diffTest(tc.img1, tc.img2, tc.diff, tc.expectedMismatch, opts...)
+		t.Run(name, test)
+	}
+}
+
+// halfIgnoreMask builds the ignore mask used by the reference JS suite:
+// mask[i] = 1 for i <= len/2 (first half ignored), 0 otherwise. The
+// off-by-one on even lengths is intentional and matches JS semantics.
+func halfIgnoreMask(n int) []byte {
+	mask := make([]byte, n)
+	half := n / 2
+	for i := 0; i <= half && i < n; i++ {
+		mask[i] = 1
+	}
+	return mask
 }
 
 const basePath = "internal/testutil/data"

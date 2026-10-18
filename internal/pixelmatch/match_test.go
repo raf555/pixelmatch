@@ -3,7 +3,7 @@ package pixelmatch
 import (
 	"testing"
 
-	"github.com/raf555/pixelmatch/internal/testutil"
+	"github.com/raf555/pixelmatch/v8/internal/testutil"
 )
 
 func TestIdenticalImages(t *testing.T) {

@@ -53,6 +53,13 @@ type Options struct {
 	// checkerboard pattern when comparing, instead of plain white. This
 	// gives a more accurate alpha-aware comparison.
 	Checkerboard bool
+
+	// IgnoreMask, if non-nil, is a width*height byte slice (one byte per
+	// pixel) that marks pixels to skip from the comparison. Any pixel whose
+	// mask byte is non-zero is treated as matching and is not written to the
+	// diff output. Useful for ignoring timestamps, animations, or any area
+	// known to change independently.
+	IgnoreMask []byte
 }
 
 // DefaultOptions returns options matching the JS pixelmatch defaults.
@@ -101,11 +108,20 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 	if output != nil && len(output) != expected {
 		return 0, ErrOutputSizeMismatch
 	}
+	if o.IgnoreMask != nil && len(o.IgnoreMask) != width*height {
+		return 0, ErrIgnoreMaskSizeMismatch
+	}
 
-	// Fast identical-images check with early exit.
+	// Fast identical-images check with early exit. Pixels covered by the
+	// ignore mask are treated as matching regardless of their actual bytes.
 	identical := true
-	for i := range expected {
-		if img1[i] != img2[i] {
+	pixels := width * height
+	for i := range pixels {
+		if o.IgnoreMask != nil && o.IgnoreMask[i] != 0 {
+			continue
+		}
+		p := i * 4
+		if !equalPixel(img1, img2, p) {
 			identical = false
 			break
 		}
@@ -142,12 +158,12 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 
 	diff := 0
 	pos := 0
-	pixels := width * height
 	for i := range pixels {
 		// Skip the color math entirely when the 4-byte pixel words are
-		// identical — a common case in screenshot diffs.
+		// identical — a common case in screenshot diffs. Pixels covered by
+		// the ignore mask are also skipped (treated as matching).
 		var delta int
-		if !equalPixel(img1, img2, pos) {
+		if (o.IgnoreMask == nil || o.IgnoreMask[i] == 0) && !equalPixel(img1, img2, pos) {
 			delta = colorDelta(img1, img2, pos, pos, o.Checkerboard, maxDelta)
 		}
 

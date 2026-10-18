@@ -3,7 +3,7 @@ package pixelmatch
 import (
 	"image"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v8/internal/pixelmatch"
 )
 
 // Option configures a Compare or CompareToImage call.
@@ -115,6 +115,17 @@ func WithCheckerboard(b bool) Option {
 func WithWindowSize(n int) Option {
 	return func(c *config) {
 		c.opts.WindowSize = n
+	}
+}
+
+// WithIgnoreMask marks pixels to skip from the comparison. The mask is one
+// byte per pixel in row-major order (length must be width*height); any pixel
+// whose mask byte is non-zero is treated as matching and is not drawn into
+// the diff output. Use this to ignore regions known to change independently,
+// such as timestamps or animated UI.
+func WithIgnoreMask(mask []byte) Option {
+	return func(c *config) {
+		c.opts.IgnoreMask = mask
 	}
 }
 

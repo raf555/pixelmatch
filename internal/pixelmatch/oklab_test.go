@@ -28,6 +28,76 @@ func TestToeCorrectedLightness(t *testing.T) {
 	}
 }
 
+// TestNearBlackNotOverWeighted pins the cube-root interpolation fix:
+// without the near-zero exact-cbrt branch, a single-step black-to-R/G/B
+// difference lands above the default threshold even though it's
+// imperceptible.
+func TestNearBlackNotOverWeighted(t *testing.T) {
+	black := []byte{0, 0, 0, 255}
+	pixel := func(r, g, b uint8) []byte { return []byte{r, g, b, 255} }
+	withThresh := func(o *Options) { o.Threshold = 0.05 }
+
+	for _, tc := range []struct {
+		name string
+		p    []byte
+		want int
+	}{
+		{"black vs (0,1,0)", pixel(0, 1, 0), 0},
+		{"black vs (1,0,0)", pixel(1, 0, 0), 0},
+		{"black vs (0,0,1)", pixel(0, 0, 1), 0},
+		{"black vs (32,20,20)", pixel(32, 20, 20), 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchN(t, black, tc.p, 1, 1, withThresh); got != tc.want {
+				t.Errorf("got %d diffs, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestThresholdZero pins the exact-match semantics of a zero threshold:
+// identical pixels (opaque or fully transparent, regardless of RGB) must
+// not count, but any byte difference on opaque pixels must.
+func TestThresholdZero(t *testing.T) {
+	zeroThresh := func(o *Options) { o.Threshold = 0 }
+	zeroThreshNoCheck := func(o *Options) {
+		o.Threshold = 0
+		o.Checkerboard = false
+	}
+
+	opaque := []byte{10, 20, 30, 255}
+	opaqueCopy := append([]byte(nil), opaque...)
+	opaqueOffByOne := []byte{11, 20, 30, 255}
+	clear1 := []byte{0, 0, 0, 0}
+	clear2 := []byte{255, 0, 0, 0}
+
+	if got := matchN(t, opaque, opaqueCopy, 1, 1, zeroThresh); got != 0 {
+		t.Errorf("identical opaque: got %d, want 0", got)
+	}
+	if got := matchN(t, opaque, opaqueOffByOne, 1, 1, zeroThresh); got != 1 {
+		t.Errorf("1-byte difference on opaque: got %d, want 1", got)
+	}
+	if got := matchN(t, clear1, clear2, 1, 1, zeroThresh); got != 0 {
+		t.Errorf("transparent pixels, any RGB: got %d, want 0", got)
+	}
+	if got := matchN(t, clear1, clear2, 1, 1, zeroThreshNoCheck); got != 0 {
+		t.Errorf("transparent pixels, checkerboard=false: got %d, want 0", got)
+	}
+}
+
+// TestIgnoreMaskSizeMismatch verifies that an IgnoreMask whose length does
+// not equal width*height is rejected.
+func TestIgnoreMaskSizeMismatch(t *testing.T) {
+	w, h := 2, 2
+	buf := make([]byte, w*h*4)
+	opts := DefaultOptions()
+	opts.IgnoreMask = make([]byte, w*h*4) // wrong size (should be w*h)
+	_, err := Match(buf, buf, nil, w, h, &opts)
+	if err != ErrIgnoreMaskSizeMismatch {
+		t.Errorf("got err %v, want %v", err, ErrIgnoreMaskSizeMismatch)
+	}
+}
+
 // TestSaturatedHuePairs covers mapbox/pixelmatch#127: the YIQ metric scored
 // these pairs near-identically, while OKLab HyAB separates them correctly at
 // the default threshold.

@@ -42,6 +42,12 @@ var (
 // two extra entries so interpolation at x == 1 stays in bounds.
 const cbrtN = 4096
 
+// cbrtExact is the first table slot where linear interpolation stays accurate
+// enough — below it the cbrt curve bends too hard and interpolation lands on
+// near-black pixels, whose differences get wildly over-weighted. For x in
+// the first cbrtExact slots, cbrtLUT falls back to math.Cbrt.
+const cbrtExact = 8
+
 var cbrtTable [cbrtN + 2]float64
 
 // Toe correction constants (Ottosson). These are float64 variables rather
@@ -91,9 +97,14 @@ func linLUT(x float64) float64 {
 }
 
 // cbrtLUT approximates the cube root over [0..1] by interpolating cbrtTable.
+// For x in the first cbrtExact slots, interpolation is too coarse to represent
+// the near-zero curvature of cbrt, so an exact math.Cbrt is used instead.
 func cbrtLUT(x float64) float64 {
 	t := x * cbrtN
 	i := int(t)
+	if i < cbrtExact {
+		return math.Cbrt(x)
+	}
 	return cbrtTable[i] + (cbrtTable[i+1]-cbrtTable[i])*(t-float64(i))
 }
 
@@ -177,7 +188,7 @@ func colorDeltaTransparent(r1, g1, b1, a1, r2, g2, b2, a2 uint8, k int, checkerb
 // Only the threshold test and the lighter/darker sign are ever used, so the
 // result is reported as 0 or ±1 rather than an actual distance.
 func oklabHyabDelta(dLr, dl, dm, ds, maxDelta float64) int {
-	if rest := maxDelta - math.Abs(dLr); rest > 0 {
+	if rest := maxDelta - math.Abs(dLr); rest >= 0 {
 		da := 1.9779984951*dl - 2.4285922050*dm + 0.4505937099*ds
 		db := 0.0259040371*dl + 0.7827717662*dm - 0.8086757660*ds
 		if da*da+db*db <= rest*rest {

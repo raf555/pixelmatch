@@ -20,7 +20,7 @@ import (
 	"image"
 	"image/draw"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v8/internal/pixelmatch"
 )
 
 // Compare compares two images and returns the number of mismatched
@@ -61,6 +61,9 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 		if ob.Dx() != w || ob.Dy() != h {
 			return 0, fmt.Errorf("%w: %dx%d vs %dx%d", ErrOutputDimensionMismatch, ob.Dx(), ob.Dy(), w, h)
 		}
+	}
+	if cfg.opts.IgnoreMask != nil && len(cfg.opts.IgnoreMask) != w*h {
+		return 0, fmt.Errorf("%w: got %d bytes, want %d", ErrIgnoreMaskSizeMismatch, len(cfg.opts.IgnoreMask), w*h)
 	}
 
 	// Materialize inputs as straight-RGBA byte buffers. Fast paths avoid

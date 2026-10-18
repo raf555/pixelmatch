@@ -1,6 +1,6 @@
 # pixelmatch
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/raf555/pixelmatch?status.svg)](https://pkg.go.dev/github.com/raf555/pixelmatch?tab=doc)
+[![Go Reference](https://pkg.go.dev/badge/github.com/raf555/pixelmatch/v8?status.svg)](https://pkg.go.dev/github.com/raf555/pixelmatch/v8?tab=doc)
 
 A native Go port of [mapbox/pixelmatch](https://github.com/mapbox/pixelmatch)
 — the smallest, simplest, fastest pixel-level image comparison library.
@@ -13,8 +13,12 @@ HyAB metric of Abasi et al. 2019).
 ## Install
 
 ```
-go get github.com/raf555/pixelmatch@latest
+go get github.com/raf555/pixelmatch/v8@latest
 ```
+
+Still on the previous major (YIQ-based)? Keep the old import path
+(`github.com/raf555/pixelmatch`) and pin to a `v1.x` tag — the two can
+coexist in the same program.
 
 ## Usage
 
@@ -24,7 +28,7 @@ The simplest path — count differing pixels:
 import (
     "image/png"
     "os"
-    "github.com/raf555/pixelmatch"
+    "github.com/raf555/pixelmatch/v8"
 )
 
 a, _ := png.Decode(fileA)
@@ -54,6 +58,29 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 // diff is a *image.NRGBA
 ```
 
+## Upgrading from v7.x (v1.x of this port)
+
+v8 tracks upstream mapbox/pixelmatch 8.0.0, which replaces the YIQ color
+metric with OKLab + HyAB. The import path moves to
+`github.com/raf555/pixelmatch/v8`; v1.x stays available at the old path for
+anyone not ready to migrate.
+
+What to expect when upgrading:
+
+- **Diff counts shift.** Same threshold, different metric — numbers won't
+  line up with v1.x. Re-baseline any snapshot assertions.
+- **Diff PNGs change byte-for-byte.** Golden-image CI will need
+  regeneration.
+- **Threshold scale is preserved.** It's still 0..1, where 1.0 is black vs
+  white. But values that were "just tight enough" against YIQ may be too
+  loose or too strict against HyAB — re-tune if accuracy matters.
+- **Public API is source-compatible.** `Compare`, `CompareToImage`, and
+  every `With*` option keep the same signatures. `WithWindowSize` and
+  `WithIgnoreMask` are new.
+- **Near-black and transparency-only cases behave better.** Upstream fixed
+  a handful of AA edge cases here; a few pixels v1.x flagged may now be
+  excluded and vice versa.
+
 ## Options
 
 | Option | Default | Meaning |
@@ -67,6 +94,7 @@ diff, n, err := pixelmatch.CompareToImage(a, b)
 | `WithDiffMask(false)` | `false` | draw diff over transparent background |
 | `WithCheckerboard(true)` | `true` | blend semi-transparent pixels against checkerboard |
 | `WithWindowSize(n)` | unset | report the densest n×n local diff count instead of the total |
+| `WithIgnoreMask(m)` | unset | skip pixels where `m[i] != 0` (one byte per pixel, length `w*h`) |
 | `WithOutput(out)` | unset | write visual diff into the given `*image.NRGBA` |
 
 The threshold is the maximum acceptable OKLab HyAB distance between two
@@ -123,7 +151,7 @@ go test -bench=. -benchmem -count=10 -cpu 1
 
 **Environment:**
 * **OS/Arch:** linux/amd64
-* **Package:** github.com/raf555/pixelmatch
+* **Package:** github.com/raf555/pixelmatch/v8
 * **CPU:** AMD EPYC 9634 84-Core Processor
 
 | Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |

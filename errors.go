@@ -3,7 +3,7 @@ package pixelmatch
 import (
 	"errors"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v8/internal/pixelmatch"
 )
 
 var (
@@ -21,4 +21,8 @@ var (
 	// not match the input images. The returned error appends the actual dimensions
 	// for context.
 	ErrOutputDimensionMismatch = errors.New("pixelmatch: output dimensions do not match")
+
+	// ErrIgnoreMaskSizeMismatch is returned when a WithIgnoreMask slice does not
+	// have exactly width*height bytes.
+	ErrIgnoreMaskSizeMismatch = pixelmatch.ErrIgnoreMaskSizeMismatch
 )
