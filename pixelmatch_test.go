@@ -72,11 +72,15 @@ func TestCompareToImageReturnsDiff(t *testing.T) {
 	w, h := 4, 4
 	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
 	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for i := range img1.Pix {
-		img1.Pix[i] = 0
-	}
-	for i := range img2.Pix {
-		img2.Pix[i] = 200
+	// Opaque black vs opaque white — unambiguous diffs independent of the
+	// checkerboard background, so this smoke test stays stable regardless
+	// of the hash used for semi-transparent blending.
+	for i := 0; i < len(img1.Pix); i += 4 {
+		img1.Pix[i+3] = 255
+		img2.Pix[i] = 255
+		img2.Pix[i+1] = 255
+		img2.Pix[i+2] = 255
+		img2.Pix[i+3] = 255
 	}
 	diff, n, err := CompareToImage(img1, img2)
 	if err != nil {

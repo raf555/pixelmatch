@@ -52,7 +52,7 @@
         "opts": {
             "threshold": 0.1
         },
-        "n": 1447
+        "n": 1465
     },
     {
         "name": "alpha-white",
@@ -71,7 +71,7 @@
         "opts": {
             "threshold": 0.1
         },
-        "n": 876
+        "n": 882
     },
     {
         "name": "custom-colors",
@@ -256,6 +256,6 @@
         "opts": {
             "threshold": 0.02
         },
-        "n": 560
+        "n": 556
     }
 ]

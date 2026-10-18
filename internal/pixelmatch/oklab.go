@@ -202,12 +202,17 @@ func oklabHyabDelta(dLr, dl, dm, ds, maxDelta float64) int {
 }
 
 // checkerboardBackground returns the RGB background color for a
-// semi-transparent pixel at byte offset k. Each channel is either 48 or 207,
-// producing a tri-tone noisy background that breaks alpha symmetries.
+// semi-transparent pixel at byte offset k. The three channels pick one of
+// eight {48, 207}³ colors from the top three bits of a Fibonacci hash of
+// the pixel index — the same construction used by upstream mapbox/pixelmatch
+// v8.0.0. No pair of colors that only differ in alpha can look alike over
+// more than 1/8 of the pixels.
 func checkerboardBackground(k int) (rb, gb, bb float64) {
-	rb = 48 + 159*float64(k%2)
-	// `(k / 1.618...) | 0` in JS truncates toward zero (works because k≥0).
-	gb = 48 + 159*float64(int(float64(k)/1.618033988749895)%2)
-	bb = 48 + 159*float64(int(float64(k)/2.618033988749895)%2)
+	// JS: `Math.imul(k >> 2, 0x9e3779b1)` is a 32-bit signed multiply with
+	// wrap-around; Go's uint32 multiplication produces the same bit pattern.
+	h := uint32(k>>2) * 0x9e3779b1
+	rb = 48 + 159*float64(h>>31)
+	gb = 48 + 159*float64((h>>30)&1)
+	bb = 48 + 159*float64((h>>29)&1)
 	return
 }
