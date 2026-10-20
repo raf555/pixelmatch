@@ -34,7 +34,13 @@ type Options struct {
 	// WindowSize, if positive, makes Match return the largest number of
 	// differing pixels found in any WindowSize x WindowSize region instead
 	// of the total count. The value is clamped to the image dimensions.
-	// Zero (the default) reports the total count.
+	// Zero (the default) or a negative value reports the total count.
+	//
+	// Deviation from upstream: mapbox/pixelmatch v8.0.0 defaults windowSize
+	// to Infinity (total count) and treats every finite value, including 0
+	// and negatives, as windowed mode clamped to a 1x1 window. Here 0 is the
+	// zero value of the field, so it must mean "unset"; a 1x1 window remains
+	// reachable as WindowSize = 1.
 	WindowSize int
 
 	// IncludeAA, when true, disables anti-aliased pixel detection (so AA
@@ -56,9 +62,10 @@ type Options struct {
 
 	// IgnoreMask, if non-nil, is a width*height byte slice (one byte per
 	// pixel) that marks pixels to skip from the comparison. Any pixel whose
-	// mask byte is non-zero is treated as matching and is not written to the
-	// diff output. Useful for ignoring timestamps, animations, or any area
-	// known to change independently.
+	// mask byte is non-zero is treated as matching: it is never counted, and
+	// in the diff output it is drawn like any unchanged pixel (faded
+	// grayscale, or left untouched in DiffMask mode). Useful for ignoring
+	// timestamps, animations, or any area known to change independently.
 	IgnoreMask []byte
 }
 
@@ -438,17 +445,19 @@ func brightnessDelta(img []byte, m int, r1b, g1b, b1b, a1b uint8) float64 {
 	}
 
 	if a1 < 255 || a2 < 255 {
-		dr = (r1*a1 - r2*a2 - 255*da) / 255
-		dg = (g1*a1 - g2*a2 - 255*da) / 255
-		db = (b1*a1 - b2*a2 - 255*da) / 255
-		d := dr*0.29889531 + dg*0.58662247 + db*0.11448223
+		// Products are wrapped in float64() to block FMA fusion; see the
+		// note at the top of oklab.go.
+		dr = (float64(r1*a1) - float64(r2*a2) - float64(255*da)) / 255
+		dg = (float64(g1*a1) - float64(g2*a2) - float64(255*da)) / 255
+		db = (float64(b1*a1) - float64(b2*a2) - float64(255*da)) / 255
+		d := float64(dr*0.29889531) + float64(dg*0.58662247) + float64(db*0.11448223)
 		if d == 0 && da != 0 {
 			return da / 2
 		}
 		return d
 	}
 
-	return dr*0.29889531 + dg*0.58662247 + db*0.11448223
+	return float64(dr*0.29889531) + float64(dg*0.58662247) + float64(db*0.11448223)
 }
 
 // drawPixel writes an opaque RGB pixel at byte offset pos in output.
@@ -468,7 +477,9 @@ func drawGrayPixel(img []byte, i int, alpha float64, output []byte) {
 	g := float64(img[i+1])
 	b := float64(img[i+2])
 	a := float64(img[i+3])
-	val := 255 + (r*0.29889531+g*0.58662247+b*0.11448223-255)*alpha*a/255
+	// Products are wrapped in float64() to block FMA fusion; see the note at
+	// the top of oklab.go.
+	val := 255 + float64((float64(r*0.29889531)+float64(g*0.58662247)+float64(b*0.11448223)-255)*alpha*a/255)
 	v := toUint8(val)
 	output[i] = v
 	output[i+1] = v

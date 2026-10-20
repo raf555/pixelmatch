@@ -24,6 +24,15 @@ import "math"
 // but if exact parity ever needs to be structural rather than empirical,
 // embed the reference table values verbatim instead of computing them.
 
+// Fused multiply-add: the Go spec lets the compiler fuse x*y + z into a
+// single FMA instruction (it does on arm64, ppc64, s390x, riscv64, and amd64
+// with GOAMD64=v3), which skips the intermediate rounding that JavaScript
+// always performs. Every product that feeds an addition or subtraction in
+// this file — and in brightnessDelta and drawGrayPixel — is therefore wrapped
+// in an explicit float64(...) conversion, which the spec guarantees rounds
+// and so prevents fusion. Keep that pattern when touching this arithmetic,
+// or results stop being architecture-independent.
+
 // linTable maps an sRGB byte to linear light in [0..1]. It carries a 257th
 // entry (a copy of the last) so fractional channel values produced by alpha
 // blending can be interpolated without a bounds check.
@@ -93,31 +102,36 @@ func init() {
 // interpolating linTable.
 func linLUT(x float64) float64 {
 	i := int(x)
-	return linTable[i] + (linTable[i+1]-linTable[i])*(x-float64(i))
+	return linTable[i] + float64((linTable[i+1]-linTable[i])*(x-float64(i)))
 }
 
 // cbrtLUT approximates the cube root over [0..1] by interpolating cbrtTable.
 // For x in the first cbrtExact slots, interpolation is too coarse to represent
 // the near-zero curvature of cbrt, so an exact math.Cbrt is used instead.
 func cbrtLUT(x float64) float64 {
-	t := x * cbrtN
+	// Fusion may cross statements, so t itself must be rounded before the
+	// t-float64(i) below.
+	t := float64(x * cbrtN)
 	i := int(t)
 	if i < cbrtExact {
 		return math.Cbrt(x)
 	}
-	return cbrtTable[i] + (cbrtTable[i+1]-cbrtTable[i])*(t-float64(i))
+	return cbrtTable[i] + float64((cbrtTable[i+1]-cbrtTable[i])*(t-float64(i)))
 }
 
-// toe applies Ottosson's toe function, mapping OKLab L to the perceptually
-// corrected lightness Lr.
-func toe(l float64) float64 {
-	x := toeK3*l - toeK1
-	return 0.5 * (x + math.Sqrt(x*x+4*toeK2*toeK3*l))
+// lightness returns Ottosson's toe-corrected OKLab lightness Lr from the
+// cube-rooted LMS values.
+func lightness(l, m, s float64) float64 {
+	ok := float64(0.2104542553*l) + float64(0.7936177850*m) - float64(0.0040720468*s)
+	x := float64(toeK3*ok) - toeK1
+	// Round the result too: once inlined, the final multiply would otherwise
+	// fuse with the caller's lr1-lr2 subtraction.
+	return float64(0.5 * (x + math.Sqrt(float64(x*x)+float64(4*toeK2*toeK3*ok))))
 }
 
 // colorDelta reports whether the OKLab HyAB distance between the pixels at
 // img1[k:] and img2[m:] exceeds maxDelta: 0 if it does not, otherwise ±1,
-// negative when the img2 pixel is the lighter of the two.
+// negative when the img2 pixel is the darker of the two.
 //
 // The caller must guarantee the two pixels are not identical — the
 // early-zero check is omitted here.
@@ -133,16 +147,22 @@ func colorDelta(img1, img2 []byte, k, m int, checkerboard bool, maxDelta float64
 
 // colorDeltaOpaque is the fast path for fully opaque pixels, where the
 // per-byte LMS tables remove the sRGB-to-linear conversion entirely.
+//
+// Deviation from upstream: mapbox/pixelmatch v8.0.0 also memoizes each
+// opaque color's LMS and Lr values in a module-level direct-mapped cache.
+// It is deliberately not ported — a package-level cache would be shared
+// mutable state and race when Match runs on several goroutines. The cache is
+// pure memoization, so leaving it out changes speed only, never results.
 func colorDeltaOpaque(r1, g1, b1, r2, g2, b2 uint8, maxDelta float64) int {
 	l1 := cbrtLUT(lmsLR[r1] + lmsLG[g1] + lmsLB[b1])
 	m1 := cbrtLUT(lmsMR[r1] + lmsMG[g1] + lmsMB[b1])
 	s1 := cbrtLUT(lmsSR[r1] + lmsSG[g1] + lmsSB[b1])
-	lr1 := toe(0.2104542553*l1 + 0.7936177850*m1 - 0.0040720468*s1)
+	lr1 := lightness(l1, m1, s1)
 
 	l2 := cbrtLUT(lmsLR[r2] + lmsLG[g2] + lmsLB[b2])
 	m2 := cbrtLUT(lmsMR[r2] + lmsMG[g2] + lmsMB[b2])
 	s2 := cbrtLUT(lmsSR[r2] + lmsSG[g2] + lmsSB[b2])
-	lr2 := toe(0.2104542553*l2 + 0.7936177850*m2 - 0.0040720468*s2)
+	lr2 := lightness(l2, m2, s2)
 
 	return oklabHyabDelta(lr1-lr2, l1-l2, m1-m2, s1-s2, maxDelta)
 }
@@ -158,25 +178,25 @@ func colorDeltaTransparent(r1, g1, b1, a1, r2, g2, b2, a2 uint8, k int, checkerb
 
 	af1, af2 := float64(a1), float64(a2)
 	// Blended channel values are fractional, hence the interpolated LUT.
-	cr1 := (float64(r1)*af1 + rb*(255-af1)) / 255
-	cg1 := (float64(g1)*af1 + gb*(255-af1)) / 255
-	cb1 := (float64(b1)*af1 + bb*(255-af1)) / 255
-	cr2 := (float64(r2)*af2 + rb*(255-af2)) / 255
-	cg2 := (float64(g2)*af2 + gb*(255-af2)) / 255
-	cb2 := (float64(b2)*af2 + bb*(255-af2)) / 255
+	cr1 := (float64(float64(r1)*af1) + float64(rb*(255-af1))) / 255
+	cg1 := (float64(float64(g1)*af1) + float64(gb*(255-af1))) / 255
+	cb1 := (float64(float64(b1)*af1) + float64(bb*(255-af1))) / 255
+	cr2 := (float64(float64(r2)*af2) + float64(rb*(255-af2))) / 255
+	cg2 := (float64(float64(g2)*af2) + float64(gb*(255-af2))) / 255
+	cb2 := (float64(float64(b2)*af2) + float64(bb*(255-af2))) / 255
 
 	lr1, lg1, lb1 := linLUT(cr1), linLUT(cg1), linLUT(cb1)
 	lr2, lg2, lb2 := linLUT(cr2), linLUT(cg2), linLUT(cb2)
 
-	l1 := cbrtLUT(0.4122214708*lr1 + 0.5363325363*lg1 + 0.0514459929*lb1)
-	m1 := cbrtLUT(0.2119034982*lr1 + 0.6806995451*lg1 + 0.1073969566*lb1)
-	s1 := cbrtLUT(0.0883024619*lr1 + 0.2817188376*lg1 + 0.6299787005*lb1)
-	l2 := cbrtLUT(0.4122214708*lr2 + 0.5363325363*lg2 + 0.0514459929*lb2)
-	m2 := cbrtLUT(0.2119034982*lr2 + 0.6806995451*lg2 + 0.1073969566*lb2)
-	s2 := cbrtLUT(0.0883024619*lr2 + 0.2817188376*lg2 + 0.6299787005*lb2)
+	l1 := cbrtLUT(float64(0.4122214708*lr1) + float64(0.5363325363*lg1) + float64(0.0514459929*lb1))
+	m1 := cbrtLUT(float64(0.2119034982*lr1) + float64(0.6806995451*lg1) + float64(0.1073969566*lb1))
+	s1 := cbrtLUT(float64(0.0883024619*lr1) + float64(0.2817188376*lg1) + float64(0.6299787005*lb1))
+	l2 := cbrtLUT(float64(0.4122214708*lr2) + float64(0.5363325363*lg2) + float64(0.0514459929*lb2))
+	m2 := cbrtLUT(float64(0.2119034982*lr2) + float64(0.6806995451*lg2) + float64(0.1073969566*lb2))
+	s2 := cbrtLUT(float64(0.0883024619*lr2) + float64(0.2817188376*lg2) + float64(0.6299787005*lb2))
 
-	lrA := toe(0.2104542553*l1 + 0.7936177850*m1 - 0.0040720468*s1)
-	lrB := toe(0.2104542553*l2 + 0.7936177850*m2 - 0.0040720468*s2)
+	lrA := lightness(l1, m1, s1)
+	lrB := lightness(l2, m2, s2)
 
 	return oklabHyabDelta(lrA-lrB, l1-l2, m1-m2, s1-s2, maxDelta)
 }
@@ -189,9 +209,9 @@ func colorDeltaTransparent(r1, g1, b1, a1, r2, g2, b2, a2 uint8, k int, checkerb
 // result is reported as 0 or ±1 rather than an actual distance.
 func oklabHyabDelta(dLr, dl, dm, ds, maxDelta float64) int {
 	if rest := maxDelta - math.Abs(dLr); rest >= 0 {
-		da := 1.9779984951*dl - 2.4285922050*dm + 0.4505937099*ds
-		db := 0.0259040371*dl + 0.7827717662*dm - 0.8086757660*ds
-		if da*da+db*db <= rest*rest {
+		da := float64(1.9779984951*dl) - float64(2.4285922050*dm) + float64(0.4505937099*ds)
+		db := float64(0.0259040371*dl) + float64(0.7827717662*dm) - float64(0.8086757660*ds)
+		if float64(da*da)+float64(db*db) <= float64(rest*rest) {
 			return 0
 		}
 	}
@@ -211,8 +231,8 @@ func checkerboardBackground(k int) (rb, gb, bb float64) {
 	// JS: `Math.imul(k >> 2, 0x9e3779b1)` is a 32-bit signed multiply with
 	// wrap-around; Go's uint32 multiplication produces the same bit pattern.
 	h := uint32(k>>2) * 0x9e3779b1
-	rb = 48 + 159*float64(h>>31)
-	gb = 48 + 159*float64((h>>30)&1)
-	bb = 48 + 159*float64((h>>29)&1)
+	rb = 48 + float64(159*float64(h>>31))
+	gb = 48 + float64(159*float64((h>>30)&1))
+	bb = 48 + float64(159*float64((h>>29)&1))
 	return
 }

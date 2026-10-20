@@ -32,7 +32,8 @@ func defaultConfig() config {
 }
 
 // WithThreshold sets the matching threshold (0..1). Smaller is more
-// sensitive. Default 0.1.
+// sensitive. It is the maximum acceptable OKLab HyAB distance between two
+// colors, where 1.0 is the distance between black and white. Default 0.1.
 func WithThreshold(t float64) Option {
 	return func(c *config) {
 		c.opts.Threshold = t
@@ -104,6 +105,10 @@ func WithCheckerboard(b bool) Option {
 // n is clamped to the image dimensions; passing 0 or a negative value
 // restores the default total count.
 //
+// Unlike upstream mapbox/pixelmatch, where any finite windowSize (including
+// 0 and negatives) selects a 1×1 window, 0 and negatives here mean "unset".
+// Use n = 1 for a 1×1 window.
+//
 // This makes a comparison robust to scattered noise: speckle from GPU
 // dithering or sub-pixel anti-aliasing never packs densely into one window,
 // while a real regression does. Failing a test on density
@@ -120,9 +125,10 @@ func WithWindowSize(n int) Option {
 
 // WithIgnoreMask marks pixels to skip from the comparison. The mask is one
 // byte per pixel in row-major order (length must be width*height); any pixel
-// whose mask byte is non-zero is treated as matching and is not drawn into
-// the diff output. Use this to ignore regions known to change independently,
-// such as timestamps or animated UI.
+// whose mask byte is non-zero is treated as matching: it is never counted,
+// and in the diff output it is drawn like any unchanged pixel. Use this to
+// ignore regions known to change independently, such as timestamps or
+// animated UI.
 func WithIgnoreMask(mask []byte) Option {
 	return func(c *config) {
 		c.opts.IgnoreMask = mask
