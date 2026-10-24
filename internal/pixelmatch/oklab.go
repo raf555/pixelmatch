@@ -17,12 +17,11 @@ import "math"
 // those tables to keep its output byte-for-byte identical to the JavaScript,
 // so they serve correctness as well as speed.
 
-// Caveat: Go's math.Pow and math.Cbrt disagree with V8's by 1 ULP on some
-// table entries, so the tables here are within one ULP of the reference
-// rather than bit-identical. A 14.7M-pixel cross-check across seven
-// thresholds and both blending modes produced zero differing output bytes.
-// To guarantee parity by construction, embed the reference table values
-// verbatim instead of computing them.
+// The tables use Go's math.Pow and math.Cbrt, which can differ from
+// JavaScript's by up to 2 ULP on some entries. JavaScript itself has no
+// single answer here: since Node 24, V8 sends Math.pow to the C library's
+// pow, so upstream's own tables vary by operating system. The test suite
+// still matches upstream's output byte for byte.
 
 // Fused multiply-add: the Go spec lets the compiler fuse x*y + z into a
 // single FMA instruction (it does on arm64, ppc64, s390x, riscv64, and amd64
@@ -59,11 +58,8 @@ const cbrtExact = 8
 
 var cbrtTable [cbrtN + 2]float64
 
-// Toe correction constants (Ottosson). These are float64 variables rather
-// than untyped constants on purpose: Go would fold constant expressions in
-// arbitrary precision, which rounds differently from the reference
-// implementation's float64 arithmetic.
-var (
+// Toe correction constants (Ottosson).
+const (
 	toeK1 = 0.206
 	toeK2 = 0.03
 	toeK3 = (1 + toeK1) / (1 + toeK2)
@@ -107,7 +103,7 @@ func linLUT(x float64) float64 {
 
 // cbrtLUT approximates the cube root over [0..1] by interpolating cbrtTable.
 // For x in the first cbrtExact slots, interpolation is too coarse to represent
-// the near-zero curvature of cbrt, so an exact math.Cbrt is used instead.
+// the near-zero curvature of cbrt, so it computes the exact cube root instead.
 func cbrtLUT(x float64) float64 {
 	// Fusion may cross statements, so t itself must be rounded before the
 	// t-float64(i) below.

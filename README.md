@@ -3,8 +3,8 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/raf555/pixelmatch/v8?status.svg)](https://pkg.go.dev/github.com/raf555/pixelmatch/v8?tab=doc)
 
 A native Go port of [mapbox/pixelmatch](https://github.com/mapbox/pixelmatch),
-the smallest, simplest, fastest pixel-level image comparison library.
-Pure Go, no external dependencies, no cgo.
+a small, fast pixel-level image comparison library. It's pure Go, with no
+dependencies and no cgo.
 
 It detects **anti-aliased pixels** and measures **perceptual color
 difference** in the OKLab color space (Ottosson 2020) with the HyAB metric
@@ -55,14 +55,14 @@ comparisons and asserts both the diff count and byte-identical diff output.
 
 ## Differences from upstream
 
-The comparison itself matches upstream byte for byte. These points differ
-from the JavaScript version:
+This port runs upstream's algorithm and matches its output on the test
+suite. It differs from the JavaScript version in these places:
 
 - **`*image.RGBA` input loses precision.** Upstream reads raw straight-alpha
   bytes. Go's `image.RGBA` stores premultiplied color, so a pixel with low
   alpha has already lost most of its color before `Compare` sees it. At the
-  default threshold (0.1), a sweep of semi-transparent colors found no count
-  changes, but at threshold 0 thousands of pixels flipped. Pass
+  default threshold (0.1), a sweep of semi-transparent colors produced no
+  count changes; at threshold 0, thousands of pixels flipped. Pass
   `*image.NRGBA` for exact results. `png.Decode` returns `*image.NRGBA` for
   PNGs with an alpha channel.
 - **Other image types go through Go's color conversion.** Paletted, gray,
@@ -79,16 +79,21 @@ from the JavaScript version:
 - **Window counts don't wrap.** Upstream keeps per-column window counts in a
   `Uint16Array`, which wraps past 65,535 when the window is taller than
   65,535 pixels. This port uses `int32`.
+- **`WithAlpha` outside 0..1 clamps.** If you pass a value outside 0..1,
+  faded background pixels in the diff image can land outside 0..255.
+  Upstream wraps them around (256 becomes 0); this port clamps them to 0 or
+  255. Values inside 0..1 give identical output.
 - **No shared color cache.** Upstream memoizes converted colors in a
   module-level cache. This port leaves it out so you can call `Compare` from
-  several goroutines at once. Results don't change, only speed.
-- **Lookup tables match to within 1 ULP.** Both versions build the
-  sRGB-to-linear and cube-root tables at startup. Go's `math.Pow` and
-  `math.Cbrt` differ from V8's by 1 ULP on some entries. A 14.7M-pixel
-  cross-check across seven thresholds and both blending modes found zero
-  differing output bytes, but that parity rests on testing. Embedding the
-  reference tables verbatim (~80KB of source) would guarantee it.
-- **Results match across CPU architectures.** Go may fuse `x*y + z` into one
+  several goroutines at once, at some cost in speed and none in results.
+- **Lookup tables use Go's `math.Pow` and `math.Cbrt`.** They differ from
+  JavaScript by up to 2 ULP on some entries (about a third of the 256
+  sRGB-to-linear values, and about 8% of the cube-root values). JavaScript
+  has no single answer to match here: Node 24 and later send `Math.pow` to
+  the C library, so upstream's own tables differ between Linux, macOS and
+  Windows. The test suite still matches upstream's output byte for byte on
+  its 25 generated cases and 14 fixture comparisons.
+- **Output matches on amd64 and arm64.** Go may fuse `x*y + z` into one
   FMA instruction on arm64 and other platforms, which skips a rounding step
   JavaScript performs. The color math blocks fusion, so amd64 and arm64
   produce the same bytes.
@@ -121,31 +126,31 @@ from the JavaScript version:
 
 **Fixed**
 
-- Near-black differences no longer get over-weighted by cube-root table
-  interpolation.
+- Cube-root table interpolation no longer over-weights near-black
+  differences.
 
 **Internal**
 
 - Tests replay 25 cases generated from upstream's JavaScript
   (`internal/testutil/gen/generate.mjs`) and the 14 upstream fixture
   comparisons, checking output byte for byte.
-- Products in the color math stay unfused, so results match on amd64, arm64
-  and other architectures.
+- The color math blocks FMA fusion, so amd64 and arm64 produce identical
+  results.
 
 </details>
 
 <details>
 <summary><b>v1.0.1</b> (2026-05-17)</summary>
 
-- Small performance optimization.
-- README updates.
+- Reordered the internal `Options` fields to shrink the struct.
+- Added tests and README updates.
 
 </details>
 
 <details>
 <summary><b>v1.0.0</b> (2026-05-15)</summary>
 
-- First release: a Go port of mapbox/pixelmatch 7.x with the YIQ color
+- First release: a Go port of mapbox/pixelmatch 7.2.0 with the YIQ color
   metric.
 
 </details>
@@ -153,7 +158,7 @@ from the JavaScript version:
 ## Migration guide
 
 <details>
-<summary><b>Upgrading from v1.x (upstream 7.x) to v8</b></summary>
+<summary><b>Upgrading from v1.x (upstream 7.2.0) to v8</b></summary>
 
 v8 tracks upstream mapbox/pixelmatch 8.0.0, which swaps the YIQ color metric
 for OKLab + HyAB. If you aren't ready to migrate, v1.x stays at the old

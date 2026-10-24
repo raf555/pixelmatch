@@ -1,9 +1,6 @@
 package pixelmatch
 
-import (
-	"encoding/binary"
-	"math"
-)
+import "encoding/binary"
 
 // Options configures a Match call. Use DefaultOptions() to get sensible
 // defaults; the zero value of Options is NOT a useful default.
@@ -469,9 +466,7 @@ func drawPixel(output []byte, pos int, r, g, b uint8) {
 }
 
 // drawGrayPixel writes a faded grayscale version of img's pixel at offset i
-// into output. The float-to-byte conversion uses JS ToUint8 semantics
-// (truncate toward zero, then modulo 256) to match JavaScript Uint8Array
-// assignment exactly.
+// into output.
 func drawGrayPixel(img []byte, i int, alpha float64, output []byte) {
 	r := float64(img[i])
 	g := float64(img[i+1])
@@ -480,24 +475,23 @@ func drawGrayPixel(img []byte, i int, alpha float64, output []byte) {
 	// Products are wrapped in float64() to block FMA fusion; see the note at
 	// the top of oklab.go.
 	val := 255 + float64((float64(r*0.29889531)+float64(g*0.58662247)+float64(b*0.11448223)-255)*alpha*a/255)
-	v := toUint8(val)
+	v := clampUint8(val)
 	output[i] = v
 	output[i+1] = v
 	output[i+2] = v
 	output[i+3] = 255
 }
 
-// toUint8 converts a JS-style float-to-byte assignment: truncate toward
-// zero, then take modulo 256. This matches `someUint8Array[k] = x` in
-// JavaScript for any finite x. NaN becomes 0.
-func toUint8(x float64) uint8 {
-	if math.IsNaN(x) {
+// clampUint8 converts x to a byte, truncating toward zero like upstream's
+// Uint8Array store. Values outside 0..255 clamp to the nearest end, and NaN
+// becomes 0. Those only occur when Alpha is outside 0..1; upstream wraps
+// them modulo 256 instead.
+func clampUint8(x float64) uint8 {
+	switch {
+	case !(x > 0): // also catches NaN
 		return 0
+	case x >= 255:
+		return 255
 	}
-	t := math.Trunc(x)
-	m := math.Mod(t, 256)
-	if m < 0 {
-		m += 256
-	}
-	return uint8(m)
+	return uint8(x)
 }
