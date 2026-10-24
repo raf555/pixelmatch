@@ -131,36 +131,18 @@ pixel.
 - **`*image.NRGBA`** with tight stride and zero origin: **zero-copy** fast
   path. This is the recommended type — it's the format pixelmatch uses
   natively (straight, non-premultiplied RGBA).
-- **`*image.RGBA`**: converted by un-premultiplying alpha. ~10% slower.
+- **`*image.RGBA`**: converted by un-premultiplying alpha into a temporary
+  buffer. Slower, and allocates.
 - **anything else** (`Gray`, `Paletted`, `YCbCr`, etc.): handled via
   `draw.Draw` to a temporary NRGBA. Always correct, slower.
 
 ## Performance
 
-### Benchmark Results Summary
-
-Figures below were measured against the previous YIQ implementation. In a
-same-machine re-run the OKLab switch came out neutral to marginally faster,
-but these numbers predate it and are worth re-measuring on your hardware.
-
-**Command**
+To measure on your own hardware:
 
 ```sh
-go test -bench=. -benchmem -count=10 -cpu 1
+go test -run='^$' -bench=. -benchmem -count=10 -cpu=1 .
 ```
-
-**Environment:**
-* **OS/Arch:** linux/amd64
-* **Package:** github.com/raf555/pixelmatch/v8
-* **CPU:** AMD EPYC 9634 84-Core Processor
-
-| Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |
-| :--- | :--- | :--- | :--- | :--- |
-| **`CompareNRGBA800x600`** | 16.05ms ± 3% | 228.2MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
-| **`CompareNoOutputNRGBA`** | 9.137ms ± 3% | 400.8MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
-| **`CompareRGBA800x600`** | 17.76ms ± 3% | 206.2MiB ± 4% | 3.672MiB ± 0% | 3.000 ± 0% |
-
-*p.s. that 1 allocation comes from the options handling.*
 
 ## Correctness
 
@@ -170,7 +152,7 @@ gradient edges, semi-transparency (both checkerboard and white-background
 modes), diff masks, custom colors, stripe patterns, single-pixel images,
 degenerate aspect ratios, near-black ramps that exercise the Lr toe
 correction, saturated hue pairs, the alpha-tiebreak path in the anti-aliasing detector, and every windowed-count mode. It is
-additionally checked against all 12 upstream PNG fixtures, asserting both the
+additionally checked against all 14 upstream PNG fixture comparisons, asserting both the
 expected diff count and byte-identical diff output. See the test files.
 
 One caveat worth knowing: the reference implementation approximates
