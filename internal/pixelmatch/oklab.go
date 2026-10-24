@@ -1,6 +1,9 @@
 package pixelmatch
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 // This file implements the perceptual color difference used by Match: the
 // OKLab color space (Ottosson, 2020) with the HyAB metric (Abasi et al.,
@@ -131,36 +134,63 @@ func lightness(l, m, s float64) float64 {
 //
 // The caller must guarantee the two pixels differ, because colorDelta skips
 // the early-zero check.
-func colorDelta(img1, img2 []byte, k, m int, checkerboard bool, maxDelta float64) int {
+func colorDelta(img1, img2 []byte, k, m int, checkerboard bool, maxDelta float64, cache *oklabCache) int {
 	r1, g1, b1, a1 := img1[k], img1[k+1], img1[k+2], img1[k+3]
 	r2, g2, b2, a2 := img2[m], img2[m+1], img2[m+2], img2[m+3]
 
 	if a1 == 255 && a2 == 255 {
-		return colorDeltaOpaque(r1, g1, b1, r2, g2, b2, maxDelta)
+		return colorDeltaOpaque(r1, g1, b1, r2, g2, b2, maxDelta, cache)
 	}
 	return colorDeltaTransparent(r1, g1, b1, a1, r2, g2, b2, a2, k, checkerboard, maxDelta)
 }
 
 // colorDeltaOpaque is the fast path for opaque pixels, where the per-byte
 // LMS tables replace the sRGB-to-linear conversion.
-//
-// Deviation from upstream: mapbox/pixelmatch v8.0.0 also memoizes each
-// opaque color's LMS and Lr values in a module-level direct-mapped cache.
-// This port leaves it out on purpose: a package-level cache is shared
-// mutable state and would race when Match runs on several goroutines. The
-// cache only memoizes, so dropping it changes speed, not results.
-func colorDeltaOpaque(r1, g1, b1, r2, g2, b2 uint8, maxDelta float64) int {
-	l1 := cbrtLUT(lmsLR[r1] + lmsLG[g1] + lmsLB[b1])
-	m1 := cbrtLUT(lmsMR[r1] + lmsMG[g1] + lmsMB[b1])
-	s1 := cbrtLUT(lmsSR[r1] + lmsSG[g1] + lmsSB[b1])
-	lr1 := lightness(l1, m1, s1)
-
-	l2 := cbrtLUT(lmsLR[r2] + lmsLG[g2] + lmsLB[b2])
-	m2 := cbrtLUT(lmsMR[r2] + lmsMG[g2] + lmsMB[b2])
-	s2 := cbrtLUT(lmsSR[r2] + lmsSG[g2] + lmsSB[b2])
-	lr2 := lightness(l2, m2, s2)
-
+func colorDeltaOpaque(r1, g1, b1, r2, g2, b2 uint8, maxDelta float64, cache *oklabCache) int {
+	l1, m1, s1, lr1 := cache.lookup(r1, g1, b1)
+	l2, m2, s2, lr2 := cache.lookup(r2, g2, b2)
 	return oklabHyabDelta(lr1-lr2, l1-l2, m1-m2, s1-s2, maxDelta)
+}
+
+// Size of the opaque color cache, as in upstream: 4096 direct-mapped slots.
+const (
+	oklabCacheBits  = 12
+	oklabCacheShift = 32 - oklabCacheBits
+	oklabCacheSize  = 1 << oklabCacheBits
+)
+
+// oklabCache memoizes each opaque color's cube-rooted LMS values and
+// toe-corrected lightness, like upstream's module-level cache. Rendered
+// images repeat a small set of colors, so most lookups skip three cube roots
+// and a square root.
+//
+// Upstream keeps one cache for the whole process. Match instead takes one
+// from oklabCachePool per call, so concurrent calls never share a cache.
+// Entries depend only on the color, so a cache reused from an earlier call
+// stays valid and needs no clearing.
+type oklabCache struct {
+	keys [oklabCacheSize]uint32 // color key + 1, so 0 marks an empty slot
+	vals [oklabCacheSize][4]float64
+}
+
+var oklabCachePool = sync.Pool{New: func() any { return new(oklabCache) }}
+
+// lookup returns the cube-rooted LMS values and lightness for an opaque
+// color, computing and storing them on a miss.
+func (c *oklabCache) lookup(r, g, b uint8) (l, m, s, lr float64) {
+	key := uint32(r)<<16 | uint32(g)<<8 | uint32(b)
+	slot := (key * 0x9e3779b1) >> oklabCacheShift
+	if c.keys[slot] == key+1 {
+		v := &c.vals[slot]
+		return v[0], v[1], v[2], v[3]
+	}
+	l = cbrtLUT(lmsLR[r] + lmsLG[g] + lmsLB[b])
+	m = cbrtLUT(lmsMR[r] + lmsMG[g] + lmsMB[b])
+	s = cbrtLUT(lmsSR[r] + lmsSG[g] + lmsSB[b])
+	lr = lightness(l, m, s)
+	c.keys[slot] = key + 1
+	c.vals[slot] = [4]float64{l, m, s, lr}
+	return l, m, s, lr
 }
 
 // colorDeltaTransparent composites both pixels over a background before

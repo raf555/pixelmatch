@@ -160,6 +160,9 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 	// First and last row holding a counted diff, to bound the window scan.
 	firstDiffY, lastDiffY := -1, 0
 
+	cache := oklabCachePool.Get().(*oklabCache)
+	defer oklabCachePool.Put(cache)
+
 	diff := 0
 	pos := 0
 	for i := range pixels {
@@ -168,7 +171,7 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 		// the pixel.
 		var delta int
 		if (o.IgnoreMask == nil || o.IgnoreMask[i] == 0) && !equalPixel(img1, img2, pos) {
-			delta = colorDelta(img1, img2, pos, pos, o.Checkerboard, maxDelta)
+			delta = colorDelta(img1, img2, pos, pos, o.Checkerboard, maxDelta, cache)
 		}
 
 		if delta != 0 {

@@ -83,9 +83,10 @@ suite. It differs from the JavaScript version in these places:
   faded background pixels in the diff image can land outside 0..255.
   Upstream wraps them around (256 becomes 0); this port clamps them to 0 or
   255. Values inside 0..1 give identical output.
-- **No shared color cache.** Upstream memoizes converted colors in a
-  module-level cache. This port leaves it out so you can call `Compare` from
-  several goroutines at once, at some cost in speed and none in results.
+- **Each call gets its own color cache.** Upstream memoizes converted
+  colors in one module-level cache. This port takes a cache from a
+  `sync.Pool` per call, so you can call `Compare` from several goroutines at
+  once. Results stay the same.
 - **Lookup tables use Go's `math.Pow` and `math.Cbrt`.** They differ from
   JavaScript by up to 2 ULP on some entries (about a third of the 256
   sRGB-to-linear values, and about 8% of the cube-root values). JavaScript
@@ -136,6 +137,8 @@ suite. It differs from the JavaScript version in these places:
   comparisons, checking output byte for byte.
 - The color math blocks FMA fusion, so amd64 and arm64 produce identical
   results.
+- Opaque colors go through a per-call cache, as upstream's do. Comparing
+  upstream's fixture pairs 1 to 7 runs about 20% faster.
 
 </details>
 
