@@ -53,7 +53,7 @@ func TestIdenticalNoOutput(t *testing.T) {
 
 func TestCompletelyDifferent(t *testing.T) {
 	w, h := 16, 16
-	// All-black vs all-white — every pixel should differ.
+	// All-black vs all-white: each pixel should differ.
 	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
 		return 0, 0, 0, 255
 	})
@@ -234,7 +234,7 @@ func TestAntialiasingDetection(t *testing.T) {
 			return 255, 255, 255, 255
 		}
 	})
-	// img2: same edge but shifted by one pixel — typical AA difference.
+	// img2: same edge shifted by one pixel, a typical AA difference.
 	img2 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
 		switch {
 		case x < 1:

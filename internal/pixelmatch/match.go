@@ -37,35 +37,35 @@ type Options struct {
 	// Zero (the default) or a negative value reports the total count.
 	//
 	// Deviation from upstream: mapbox/pixelmatch v8.0.0 defaults windowSize
-	// to Infinity (total count) and treats every finite value, including 0
+	// to Infinity (total count) and treats any finite value, including 0
 	// and negatives, as windowed mode clamped to a 1x1 window. Here 0 is the
-	// zero value of the field, so it must mean "unset"; a 1x1 window remains
-	// reachable as WindowSize = 1.
+	// field's zero value, so it means "unset". Use WindowSize = 1 for a 1x1
+	// window.
 	WindowSize int
 
-	// IncludeAA, when true, disables anti-aliased pixel detection (so AA
-	// pixels are counted as real differences). Default false.
+	// IncludeAA, when true, disables anti-aliased pixel detection, so Match
+	// counts AA pixels as differences. Default false.
 	IncludeAA bool
 
 	// HasDiffColorAlt enables the use of DiffColorAlt for darker pixels.
 	HasDiffColorAlt bool
 
 	// DiffMask, if true, draws the diff over a transparent background
-	// instead of over the (faded) original image. Anti-aliased pixels are
-	// not drawn in mask mode.
+	// instead of over the faded original image. Mask mode skips
+	// anti-aliased pixels.
 	DiffMask bool
 
 	// Checkerboard, if true, blends semi-transparent pixels against a
-	// checkerboard pattern when comparing, instead of plain white. This
-	// gives a more accurate alpha-aware comparison.
+	// checkerboard pattern when comparing, instead of plain white. The
+	// checkerboard catches differences that only show up in alpha.
 	Checkerboard bool
 
 	// IgnoreMask, if non-nil, is a width*height byte slice (one byte per
-	// pixel) that marks pixels to skip from the comparison. Any pixel whose
-	// mask byte is non-zero is treated as matching: it is never counted, and
-	// in the diff output it is drawn like any unchanged pixel (faded
-	// grayscale, or left untouched in DiffMask mode). Useful for ignoring
-	// timestamps, animations, or any area known to change independently.
+	// pixel) that marks pixels to skip. Match treats a pixel with a non-zero
+	// mask byte as matching: it leaves the pixel out of the count and draws
+	// it like an unchanged pixel (faded grayscale, or untouched in DiffMask
+	// mode). Use it for timestamps, animations, or other areas that change
+	// on their own.
 	IgnoreMask []byte
 }
 
@@ -143,8 +143,8 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 		return 0, nil
 	}
 
-	// Maximum acceptable OKLab HyAB distance between two colors; 1.0 is the
-	// distance between black and white, so the threshold is used directly.
+	// Maximum acceptable OKLab HyAB distance between two colors. Black to
+	// white measures 1.0, so the threshold needs no scaling.
 	maxDelta := o.Threshold
 
 	aaR, aaG, aaB := o.AAColor[0], o.AAColor[1], o.AAColor[2]
@@ -166,9 +166,9 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 	diff := 0
 	pos := 0
 	for i := range pixels {
-		// Skip the color math entirely when the 4-byte pixel words are
-		// identical — a common case in screenshot diffs. Pixels covered by
-		// the ignore mask are also skipped (treated as matching).
+		// Skip the color math when the 4-byte pixel words are identical, a
+		// common case in screenshot diffs, or when the ignore mask covers
+		// the pixel.
 		var delta int
 		if (o.IgnoreMask == nil || o.IgnoreMask[i] == 0) && !equalPixel(img1, img2, pos) {
 			delta = colorDelta(img1, img2, pos, pos, o.Checkerboard, maxDelta)
@@ -232,7 +232,7 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 // horizontal pass, which is most of them for a typical sparse diff.
 func maxWindowDiff(mask []uint8, width, height, windowSize, firstDiffY, lastDiffY int) int {
 	if firstDiffY < 0 {
-		return 0 // every difference was excluded as anti-aliasing
+		return 0 // the AA detector excluded each difference
 	}
 
 	n := min(windowSize, width, height)

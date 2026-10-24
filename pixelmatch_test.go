@@ -35,7 +35,7 @@ func TestCompareNoOutput(t *testing.T) {
 	w, h := 8, 8
 	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
 	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	// Make img2 fully white, img1 fully zero — every pixel should differ.
+	// Make img2 white and img1 zero, so each pixel differs.
 	for i := range img2.Pix {
 		img2.Pix[i] = 255
 	}
@@ -72,7 +72,7 @@ func TestCompareToImageReturnsDiff(t *testing.T) {
 	w, h := 4, 4
 	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
 	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	// Opaque black vs opaque white — unambiguous diffs independent of the
+	// Opaque black vs opaque white: unambiguous diffs independent of the
 	// checkerboard background, so this smoke test stays stable regardless
 	// of the hash used for semi-transparent blending.
 	for i := 0; i < len(img1.Pix); i += 4 {
@@ -324,7 +324,7 @@ func TestRoundTripPNG(t *testing.T) {
 	}
 
 	// Decoded is *image.RGBA (since src is opaque). Compare against the
-	// original NRGBA — there should be zero differences.
+	// original NRGBA, so there should be zero differences.
 	n, err := Compare(src, decoded)
 	if err != nil {
 		t.Fatal(err)

@@ -7,8 +7,7 @@ import (
 )
 
 // Option configures a Compare or CompareToImage call.
-// Unspecified options take the package defaults
-// (see [DefaultOptions] for the underlying values).
+// Options you leave out keep their defaults, listed on each With function.
 //
 // Example:
 //
@@ -109,14 +108,14 @@ func WithCheckerboard(b bool) Option {
 // 0 and negatives) selects a 1×1 window, 0 and negatives here mean "unset".
 // Use n = 1 for a 1×1 window.
 //
-// This makes a comparison robust to scattered noise: speckle from GPU
-// dithering or sub-pixel anti-aliasing never packs densely into one window,
-// while a real regression does. Failing a test on density
-// (result / n² > tau) stays comparable across image sizes, so a stricter
-// threshold can catch smaller real changes without tripping over noise.
+// Speckle from GPU dithering or sub-pixel anti-aliasing spreads out and
+// stays sparse in any one window, while a regression packs its changed
+// pixels together. A density check (result / n² > tau) also compares fairly
+// across image sizes, so you can use a stricter threshold to catch smaller
+// changes without failing on noise.
 //
-// The diff image, if requested, is unaffected — it still marks every
-// differing pixel.
+// The option changes only the returned count. A requested diff image still
+// marks each differing pixel.
 func WithWindowSize(n int) Option {
 	return func(c *config) {
 		c.opts.WindowSize = n
@@ -124,10 +123,10 @@ func WithWindowSize(n int) Option {
 }
 
 // WithIgnoreMask marks pixels to skip from the comparison. The mask is one
-// byte per pixel in row-major order (length must be width*height); any pixel
-// whose mask byte is non-zero is treated as matching: it is never counted,
-// and in the diff output it is drawn like any unchanged pixel. Use this to
-// ignore regions known to change independently, such as timestamps or
+// byte per pixel in row-major order (length must be width*height). Compare
+// treats a pixel with a non-zero mask byte as matching: it leaves the pixel
+// out of the count and draws it in the diff output like an unchanged pixel.
+// Use it for regions that change on their own, such as timestamps or
 // animated UI.
 func WithIgnoreMask(mask []byte) Option {
 	return func(c *config) {
@@ -135,13 +134,12 @@ func WithIgnoreMask(mask []byte) Option {
 	}
 }
 
-// WithOutput sets the destination image to which the visual diff will be
-// written. Without this option, Compare only counts mismatched pixels and
-// does not produce a diff image (which is faster).
+// WithOutput sets the image Compare writes the visual diff into. Without
+// this option, Compare only counts mismatched pixels, which is faster.
 //
-// The output's dimensions must match img1 and img2. The most efficient
-// case is an *[image.NRGBA] with a tight stride and zero origin, which is
-// written directly; other layouts go through an internal buffer.
+// The output's dimensions must match img1 and img2. Compare writes straight
+// into an *[image.NRGBA] with a tight stride and zero origin; other layouts
+// go through an internal buffer.
 //
 // To get a freshly allocated diff image without managing the buffer
 // yourself, use CompareToImage instead.

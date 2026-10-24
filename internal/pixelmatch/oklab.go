@@ -4,41 +4,41 @@ import "math"
 
 // This file implements the perceptual color difference used by Match: the
 // OKLab color space (Ottosson, 2020) with the HyAB metric (Abasi et al.,
-// 2019), |ΔLr| + √(Δa² + Δb²), which tracks large color differences much
-// better than the YIQ metric used before.
+// 2019), |ΔLr| + √(Δa² + Δb²), which tracks large color differences better
+// than the YIQ metric used before.
 //
-// Lightness is Ottosson's toe-corrected Lr rather than raw OKLab L, which
-// avoids over-expanding near-black differences while keeping the
-// black-to-white distance at exactly 1.0. That is why the threshold option
-// is now used directly as the maximum acceptable distance.
+// Lightness is Ottosson's toe-corrected Lr rather than raw OKLab L. Lr
+// avoids over-expanding near-black differences and keeps the black-to-white
+// distance at 1.0, so the threshold option serves as the maximum acceptable
+// distance with no scaling.
 //
-// The lookup tables below are not merely an optimization: the reference
-// implementation approximates sRGB-to-linear conversion and the cube root
-// with linearly interpolated tables, so reproducing them exactly is what
-// keeps this port byte-for-byte identical to the JavaScript output.
+// The reference implementation approximates sRGB-to-linear conversion and
+// the cube root with linearly interpolated tables. This file reproduces
+// those tables to keep its output byte-for-byte identical to the JavaScript,
+// so they serve correctness as well as speed.
 
 // Caveat: Go's math.Pow and math.Cbrt disagree with V8's by 1 ULP on some
 // table entries, so the tables here are within one ULP of the reference
 // rather than bit-identical. A 14.7M-pixel cross-check across seven
-// thresholds and both blending modes produced zero differing output bytes,
-// but if exact parity ever needs to be structural rather than empirical,
-// embed the reference table values verbatim instead of computing them.
+// thresholds and both blending modes produced zero differing output bytes.
+// To guarantee parity by construction, embed the reference table values
+// verbatim instead of computing them.
 
 // Fused multiply-add: the Go spec lets the compiler fuse x*y + z into a
 // single FMA instruction (it does on arm64, ppc64, s390x, riscv64, and amd64
-// with GOAMD64=v3), which skips the intermediate rounding that JavaScript
-// always performs. Every product that feeds an addition or subtraction in
-// this file — and in brightnessDelta and drawGrayPixel — is therefore wrapped
-// in an explicit float64(...) conversion, which the spec guarantees rounds
-// and so prevents fusion. Keep that pattern when touching this arithmetic,
-// or results stop being architecture-independent.
+// with GOAMD64=v3), which skips the intermediate rounding JavaScript
+// performs. Each product that feeds an addition or subtraction in this file,
+// brightnessDelta and drawGrayPixel sits inside an explicit float64(...)
+// conversion. The spec guarantees that conversion rounds, which blocks
+// fusion. Keep the pattern when you change this arithmetic, or results will
+// differ by architecture.
 
 // linTable maps an sRGB byte to linear light in [0..1]. It carries a 257th
 // entry (a copy of the last) so fractional channel values produced by alpha
 // blending can be interpolated without a bounds check.
 var linTable [257]float64
 
-// Per-channel LMS matrix contributions, premultiplied for every opaque sRGB
+// Per-channel LMS matrix contributions, premultiplied for each opaque sRGB
 // byte value. Summing three of these replaces a matrix multiply on the hot
 // opaque path.
 var (
@@ -52,8 +52,8 @@ var (
 const cbrtN = 4096
 
 // cbrtExact is the first table slot where linear interpolation stays accurate
-// enough — below it the cbrt curve bends too hard and interpolation lands on
-// near-black pixels, whose differences get wildly over-weighted. For x in
+// enough. Below it the cbrt curve bends too hard, and interpolation
+// over-weights differences between near-black pixels by up to 50%. For x in
 // the first cbrtExact slots, cbrtLUT falls back to math.Cbrt.
 const cbrtExact = 8
 
@@ -133,8 +133,8 @@ func lightness(l, m, s float64) float64 {
 // img1[k:] and img2[m:] exceeds maxDelta: 0 if it does not, otherwise ±1,
 // negative when the img2 pixel is the darker of the two.
 //
-// The caller must guarantee the two pixels are not identical — the
-// early-zero check is omitted here.
+// The caller must guarantee the two pixels differ, because colorDelta skips
+// the early-zero check.
 func colorDelta(img1, img2 []byte, k, m int, checkerboard bool, maxDelta float64) int {
 	r1, g1, b1, a1 := img1[k], img1[k+1], img1[k+2], img1[k+3]
 	r2, g2, b2, a2 := img2[m], img2[m+1], img2[m+2], img2[m+3]
@@ -145,14 +145,14 @@ func colorDelta(img1, img2 []byte, k, m int, checkerboard bool, maxDelta float64
 	return colorDeltaTransparent(r1, g1, b1, a1, r2, g2, b2, a2, k, checkerboard, maxDelta)
 }
 
-// colorDeltaOpaque is the fast path for fully opaque pixels, where the
-// per-byte LMS tables remove the sRGB-to-linear conversion entirely.
+// colorDeltaOpaque is the fast path for opaque pixels, where the per-byte
+// LMS tables replace the sRGB-to-linear conversion.
 //
 // Deviation from upstream: mapbox/pixelmatch v8.0.0 also memoizes each
 // opaque color's LMS and Lr values in a module-level direct-mapped cache.
-// It is deliberately not ported — a package-level cache would be shared
-// mutable state and race when Match runs on several goroutines. The cache is
-// pure memoization, so leaving it out changes speed only, never results.
+// This port leaves it out on purpose: a package-level cache is shared
+// mutable state and would race when Match runs on several goroutines. The
+// cache only memoizes, so dropping it changes speed, not results.
 func colorDeltaOpaque(r1, g1, b1, r2, g2, b2 uint8, maxDelta float64) int {
 	l1 := cbrtLUT(lmsLR[r1] + lmsLG[g1] + lmsLB[b1])
 	m1 := cbrtLUT(lmsMR[r1] + lmsMG[g1] + lmsMB[b1])
@@ -224,8 +224,8 @@ func oklabHyabDelta(dLr, dl, dm, ds, maxDelta float64) int {
 // checkerboardBackground returns the RGB background color for a
 // semi-transparent pixel at byte offset k. The three channels pick one of
 // eight {48, 207}³ colors from the top three bits of a Fibonacci hash of
-// the pixel index — the same construction used by upstream mapbox/pixelmatch
-// v8.0.0. No pair of colors that only differ in alpha can look alike over
+// the pixel index, the same construction upstream mapbox/pixelmatch v8.0.0
+// uses. No pair of colors that only differ in alpha can look alike over
 // more than 1/8 of the pixels.
 func checkerboardBackground(k int) (rb, gb, bb float64) {
 	// JS: `Math.imul(k >> 2, 0x9e3779b1)` is a 32-bit signed multiply with
