@@ -38,7 +38,7 @@ func TestIdenticalImages(t *testing.T) {
 
 func TestIdenticalNoOutput(t *testing.T) {
 	w, h := 8, 8
-	img := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 100, 100, 100, 255
 	})
 	img2 := make([]byte, len(img))
@@ -55,10 +55,10 @@ func TestIdenticalNoOutput(t *testing.T) {
 func TestCompletelyDifferent(t *testing.T) {
 	w, h := 16, 16
 	// All-black vs all-white: each pixel should differ.
-	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img1 := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 0, 0, 0, 255
 	})
-	img2 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img2 := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 255, 255, 255, 255
 	})
 	out := make([]byte, len(img1))
@@ -78,7 +78,7 @@ func TestCompletelyDifferent(t *testing.T) {
 
 func TestPartialDifference(t *testing.T) {
 	w, h := 10, 10
-	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img1 := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 50, 50, 50, 255
 	})
 	img2 := make([]byte, len(img1))
@@ -101,11 +101,11 @@ func TestPartialDifference(t *testing.T) {
 
 func TestThresholdSensitivity(t *testing.T) {
 	w, h := 8, 8
-	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img1 := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 100, 100, 100, 255
 	})
 	// Tiny per-pixel change.
-	img2 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img2 := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 105, 105, 105, 255
 	})
 
@@ -135,13 +135,13 @@ func TestThresholdSensitivity(t *testing.T) {
 func TestDiffColorAlt(t *testing.T) {
 	w, h := 4, 4
 	// img1 light, img2 dark in one half; img1 dark, img2 light in the other.
-	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img1 := testutil.MakeRGBA(w, h, func(x, _ int) (uint8, uint8, uint8, uint8) {
 		if x < 2 {
 			return 240, 240, 240, 255 // light
 		}
 		return 20, 20, 20, 255 // dark
 	})
-	img2 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img2 := testutil.MakeRGBA(w, h, func(x, _ int) (uint8, uint8, uint8, uint8) {
 		if x < 2 {
 			return 20, 20, 20, 255 // dark (img2 darker)
 		}
@@ -175,7 +175,7 @@ func TestDiffColorAlt(t *testing.T) {
 
 func TestDiffMask(t *testing.T) {
 	w, h := 4, 4
-	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img1 := testutil.MakeRGBA(w, h, func(_, _ int) (uint8, uint8, uint8, uint8) {
 		return 100, 100, 100, 255
 	})
 	img2 := make([]byte, len(img1))
@@ -225,7 +225,7 @@ func TestAntialiasingDetection(t *testing.T) {
 	w, h := 5, 5
 	// img1: a vertical edge with 1-px gradient.
 	//   columns 0,1 = black ; column 2 = mid-gray ; columns 3,4 = white
-	img1 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img1 := testutil.MakeRGBA(w, h, func(x, _ int) (uint8, uint8, uint8, uint8) {
 		switch {
 		case x < 2:
 			return 0, 0, 0, 255
@@ -236,7 +236,7 @@ func TestAntialiasingDetection(t *testing.T) {
 		}
 	})
 	// img2: same edge shifted by one pixel, a typical AA difference.
-	img2 := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
+	img2 := testutil.MakeRGBA(w, h, func(x, _ int) (uint8, uint8, uint8, uint8) {
 		switch {
 		case x < 1:
 			return 0, 0, 0, 255
@@ -259,7 +259,7 @@ func TestAntialiasingDetection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !(nAA < nNoAA) {
+	if nAA >= nNoAA {
 		t.Errorf("expected AA-aware count (%d) < AA-included count (%d)", nAA, nNoAA)
 	}
 }

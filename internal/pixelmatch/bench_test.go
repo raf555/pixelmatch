@@ -1,6 +1,7 @@
 package pixelmatch
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/draw"
@@ -20,12 +21,11 @@ func BenchmarkFixtures(b *testing.B) {
 		w, h int
 	}
 	load := func(name string) ([]byte, int, int) {
-		f, err := os.Open("../testutil/testdata/" + name + ".png")
+		data, err := os.ReadFile("../testutil/testdata/" + name + ".png")
 		if err != nil {
 			b.Fatal(err)
 		}
-		defer f.Close()
-		img, err := png.Decode(f)
+		img, err := png.Decode(bytes.NewReader(data))
 		if err != nil {
 			b.Fatal(err)
 		}

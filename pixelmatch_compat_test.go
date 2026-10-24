@@ -114,8 +114,10 @@ func TestCompatiblity(t *testing.T) {
 	}
 
 	for _, tc := range tcs {
-		name, test := diffTest(tc.img1, tc.img2, tc.diff, tc.expectedMismatch, tc.opts...)
-		t.Run(name, test)
+		t.Run(diffTestName(tc.img1, tc.img2, tc.diff), func(t *testing.T) {
+			t.Parallel()
+			diffTest(t, tc.img1, tc.img2, tc.diff, tc.expectedMismatch, tc.opts...)
+		})
 	}
 }
 
@@ -152,8 +154,10 @@ func TestCompatibilityIgnoreMask(t *testing.T) {
 		opts := append([]Option{}, tc.opts...)
 		opts = append(opts, WithIgnoreMask(mask))
 
-		name, test := diffTest(tc.img1, tc.img2, tc.diff, tc.expectedMismatch, opts...)
-		t.Run(name, test)
+		t.Run(diffTestName(tc.img1, tc.img2, tc.diff), func(t *testing.T) {
+			t.Parallel()
+			diffTest(t, tc.img1, tc.img2, tc.diff, tc.expectedMismatch, opts...)
+		})
 	}
 }
 
@@ -171,18 +175,17 @@ func halfIgnoreMask(n int) []byte {
 
 const basePath = "internal/testutil/testdata"
 
-func mustReadImage(t testing.TB, imageName string) image.Image {
-	t.Helper()
+func mustReadImage(tb testing.TB, imageName string) image.Image {
+	tb.Helper()
 
-	f, err := os.Open(filepath.Join(basePath, imageName+".png"))
+	data, err := os.ReadFile(filepath.Join(basePath, imageName+".png"))
 	if err != nil {
-		t.Fatalf("mustReadImage: failed to open test image: %s", err.Error())
+		tb.Fatalf("mustReadImage: failed to read test image: %v", err)
 	}
-	defer f.Close()
 
-	img, _, err := image.Decode(f)
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		t.Fatalf("mustReadImage: failed to decode image: %s", err.Error())
+		tb.Fatalf("mustReadImage: failed to decode image: %v", err)
 	}
 
 	return img
@@ -250,56 +253,58 @@ func TestWindowSizeOnFixture(t *testing.T) {
 	}
 }
 
-func diffTest(imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...Option) (string, func(*testing.T)) {
-	name := fmt.Sprintf("comparing %s to %s against %s", imgPath1, imgPath2, diffImgPath)
+func diffTestName(imgPath1, imgPath2, diffImgPath string) string {
+	return fmt.Sprintf("comparing %s to %s against %s", imgPath1, imgPath2, diffImgPath)
+}
 
-	return name, func(t *testing.T) {
-		t.Parallel()
+// diffTest compares two fixture images and checks the count and diff image
+// against the expected fixture, byte for byte.
+func diffTest(t *testing.T, imgPath1, imgPath2, diffImgPath string, expectedMismatch int, opts ...Option) {
+	t.Helper()
 
-		img1 := mustReadImage(t, imgPath1)
-		img2 := mustReadImage(t, imgPath2)
+	img1 := mustReadImage(t, imgPath1)
+	img2 := mustReadImage(t, imgPath2)
 
-		diffNRGBA, mismatch, err := CompareToImage(img1, img2, opts...)
-		if err != nil {
-			t.Errorf("diffTest: unexpected error on comparing image 1 and 2 with output diff: %s", err.Error())
-		}
+	diffNRGBA, mismatch, err := CompareToImage(img1, img2, opts...)
+	if err != nil {
+		t.Errorf("diffTest: unexpected error on comparing image 1 and 2 with output diff: %s", err.Error())
+	}
 
-		mismatch2, err := Compare(img1, img2, opts...)
-		if err != nil {
-			t.Errorf("diffTest: unexpected error on comparing image 1 and 2 without output diff: %s", err.Error())
-		}
+	mismatch2, err := Compare(img1, img2, opts...)
+	if err != nil {
+		t.Errorf("diffTest: unexpected error on comparing image 1 and 2 without output diff: %s", err.Error())
+	}
 
-		expectedDiff := mustReadImage(t, diffImgPath)
-		mismatch3, err := Compare(expectedDiff, diffNRGBA, opts...)
-		if err != nil {
-			t.Errorf("diffTest: unexpected error on comparing expected diff and output diff: %s", err.Error())
-		}
+	expectedDiff := mustReadImage(t, diffImgPath)
+	mismatch3, err := Compare(expectedDiff, diffNRGBA, opts...)
+	if err != nil {
+		t.Errorf("diffTest: unexpected error on comparing expected diff and output diff: %s", err.Error())
+	}
 
-		// The comparison above runs at the case's own threshold, so it would
-		// tolerate small per-pixel drift. Assert byte equality as well.
-		wantPix := image.NewNRGBA(expectedDiff.Bounds())
-		draw.Draw(wantPix, wantPix.Bounds(), expectedDiff, expectedDiff.Bounds().Min, draw.Src)
-		if !bytes.Equal(diffNRGBA.Pix, wantPix.Pix) {
-			bad := 0
-			for i := range diffNRGBA.Pix {
-				if diffNRGBA.Pix[i] != wantPix.Pix[i] {
-					bad++
-				}
+	// The comparison above runs at the case's own threshold, so it would
+	// tolerate small per-pixel drift. Assert byte equality as well.
+	wantPix := image.NewNRGBA(expectedDiff.Bounds())
+	draw.Draw(wantPix, wantPix.Bounds(), expectedDiff, expectedDiff.Bounds().Min, draw.Src)
+	if !bytes.Equal(diffNRGBA.Pix, wantPix.Pix) {
+		bad := 0
+		for i := range diffNRGBA.Pix {
+			if diffNRGBA.Pix[i] != wantPix.Pix[i] {
+				bad++
 			}
-			t.Errorf("diffTest: diff output is not byte-identical to the fixture: %d of %d bytes differ",
-				bad, len(wantPix.Pix))
 		}
+		t.Errorf("diffTest: diff output is not byte-identical to the fixture: %d of %d bytes differ",
+			bad, len(wantPix.Pix))
+	}
 
-		if mismatch != expectedMismatch {
-			t.Errorf("diffTest: mismatch = %d, want = %d", mismatch, expectedMismatch)
-		}
+	if mismatch != expectedMismatch {
+		t.Errorf("diffTest: mismatch = %d, want = %d", mismatch, expectedMismatch)
+	}
 
-		if mismatch != mismatch2 {
-			t.Errorf("diffTest: mismatch with vs without diff output = %d, want = %d", mismatch2, mismatch)
-		}
+	if mismatch != mismatch2 {
+		t.Errorf("diffTest: mismatch with vs without diff output = %d, want = %d", mismatch2, mismatch)
+	}
 
-		if mismatch3 != 0 {
-			t.Errorf("diffTest: diff output mismatch = %d, want = 0", mismatch3)
-		}
+	if mismatch3 != 0 {
+		t.Errorf("diffTest: diff output mismatch = %d, want = 0", mismatch3)
 	}
 }

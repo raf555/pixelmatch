@@ -1,3 +1,5 @@
+// Package pixelmatch implements the comparison on raw RGBA byte slices. The
+// public package wraps it with an image.Image API and functional options.
 package pixelmatch
 
 import (

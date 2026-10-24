@@ -39,8 +39,8 @@ func WithThreshold(t float64) Option {
 	}
 }
 
-// WithIncludeAA, if true, disables anti-aliased pixel detection so AA
-// pixels are counted as real differences. Default false.
+// WithIncludeAA turns off anti-aliased pixel detection when b is true, so
+// Compare counts anti-aliased pixels as differences. Default false.
 func WithIncludeAA(b bool) Option {
 	return func(c *config) {
 		c.opts.IncludeAA = b
@@ -81,9 +81,9 @@ func WithDiffColorAlt(r, g, b uint8) Option {
 	}
 }
 
-// WithDiffMask, if true, draws the diff over a transparent background
-// instead of over the (faded) original image. Anti-aliased pixels are not
-// drawn in mask mode. Default false.
+// WithDiffMask draws the diff over a transparent background instead of the
+// faded original image when b is true. Mask mode leaves anti-aliased pixels
+// undrawn. Default false.
 func WithDiffMask(b bool) Option {
 	return func(c *config) {
 		c.opts.DiffMask = b

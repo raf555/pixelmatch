@@ -21,12 +21,15 @@ func MakeRGBA(w, h int, fn func(x, y int) (r, g, b, a uint8)) []byte {
 	return buf
 }
 
+// BytesToNRGBA copies tightly packed RGBA bytes into a new w×h NRGBA image.
 func BytesToNRGBA(pix []byte, w, h int) *image.NRGBA {
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	copy(img.Pix, pix)
 	return img
 }
 
+// BenchData returns two w×h random RGBA images that differ in up to 5% of
+// pixels, plus an output buffer. The seed is fixed, so runs are repeatable.
 func BenchData(w, h int) (img1, img2, out []byte) {
 	n := w * h * 4
 	img1 = make([]byte, n)

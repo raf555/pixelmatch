@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  # errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - errorlint # errors.Is and errors.As instead of == and type assertions
+    - gocritic # common style and correctness checks
+    - misspell
+    - modernize # newer Go idioms: range over int, min/max, slices, ...
+    - nolintlint # keeps //nolint comments specific and explained
+    - revive # exported identifiers need doc comments
+    - thelper # test helpers call t.Helper()
+    - unparam # unused function parameters and results
+    - usestdlibvars # http.MethodGet and friends instead of literals
+  # Don't enable unconvert: the float64(...) wrappers in the color math look
+  # redundant but stop the compiler from fusing multiply-adds (see oklab.go).
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

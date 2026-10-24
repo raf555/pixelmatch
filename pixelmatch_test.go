@@ -267,23 +267,23 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 			}
 			if c.Opts.DiffColor != nil {
 				opts = append(opts, WithDiffColor(
-					uint8((*c.Opts.DiffColor)[0]),
-					uint8((*c.Opts.DiffColor)[1]),
-					uint8((*c.Opts.DiffColor)[2]),
+					uint8(c.Opts.DiffColor[0]),
+					uint8(c.Opts.DiffColor[1]),
+					uint8(c.Opts.DiffColor[2]),
 				))
 			}
 			if c.Opts.DiffColorAlt != nil {
 				opts = append(opts, WithDiffColorAlt(
-					uint8((*c.Opts.DiffColorAlt)[0]),
-					uint8((*c.Opts.DiffColorAlt)[1]),
-					uint8((*c.Opts.DiffColorAlt)[2]),
+					uint8(c.Opts.DiffColorAlt[0]),
+					uint8(c.Opts.DiffColorAlt[1]),
+					uint8(c.Opts.DiffColorAlt[2]),
 				))
 			}
 			if c.Opts.AAColor != nil {
 				opts = append(opts, WithAAColor(
-					uint8((*c.Opts.AAColor)[0]),
-					uint8((*c.Opts.AAColor)[1]),
-					uint8((*c.Opts.AAColor)[2]),
+					uint8(c.Opts.AAColor[0]),
+					uint8(c.Opts.AAColor[1]),
+					uint8(c.Opts.AAColor[2]),
 				))
 			}
 
@@ -354,15 +354,14 @@ func TestCompare(t *testing.T) {
 
 			readpng := func(path string) image.Image {
 
-				f, err := os.Open(path)
+				data, err := os.ReadFile(path)
 				if errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("%s does not exist, please create it for this test to run: %v", path, err)
 				} else if err != nil {
-					t.Fatalf("open file err: %s", err.Error())
+					t.Fatalf("read file err: %s", err.Error())
 				}
-				defer f.Close()
 
-				img, err := png.Decode(f)
+				img, err := png.Decode(bytes.NewReader(data))
 				if err != nil {
 					t.Fatalf("decode file err: %s", err.Error())
 				}
