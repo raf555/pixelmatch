@@ -1,6 +1,9 @@
 package pixelmatch
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func gray(v uint8) []byte { return []byte{v, v, v, 255} }
 
@@ -93,7 +96,7 @@ func TestIgnoreMaskSizeMismatch(t *testing.T) {
 	opts := DefaultOptions()
 	opts.IgnoreMask = make([]byte, w*h*4) // wrong size (should be w*h)
 	_, err := Match(buf, buf, nil, w, h, &opts)
-	if err != ErrIgnoreMaskSizeMismatch {
+	if !errors.Is(err, ErrIgnoreMaskSizeMismatch) {
 		t.Errorf("got err %v, want %v", err, ErrIgnoreMaskSizeMismatch)
 	}
 }

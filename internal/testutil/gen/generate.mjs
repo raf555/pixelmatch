@@ -1,4 +1,4 @@
-// Regenerates ../cases.json and the sibling PNG files under ../data/cases/
+// Regenerates ../testdata/cases.json and the PNG files under ../testdata/cases/
 // from the reference JavaScript implementation.
 //
 // The Go test suite replays these vectors and asserts byte-for-byte equality
@@ -34,8 +34,8 @@ const upstreamAbs = path.resolve(upstream);
 const match = (await import(pathToFileURL(upstreamAbs).href)).default;
 const {PNG} = createRequire(upstreamAbs)('pngjs');
 
-const casesPath = path.join(here, '..', 'cases.json');
-const casesDir = path.join(here, '..', 'data', 'cases');
+const casesPath = path.join(here, '..', 'testdata', 'cases.json');
+const casesDir = path.join(here, '..', 'testdata', 'cases');
 const cases = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
 
 function readPNG(p) {

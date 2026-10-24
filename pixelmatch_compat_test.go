@@ -169,9 +169,11 @@ func halfIgnoreMask(n int) []byte {
 	return mask
 }
 
-const basePath = "internal/testutil/data"
+const basePath = "internal/testutil/testdata"
 
 func mustReadImage(t testing.TB, imageName string) image.Image {
+	t.Helper()
+
 	f, err := os.Open(filepath.Join(basePath, imageName+".png"))
 	if err != nil {
 		t.Fatalf("mustReadImage: failed to open test image: %s", err.Error())

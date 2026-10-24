@@ -37,7 +37,7 @@ func BenchData(w, h int) (img1, img2, out []byte) {
 		img1[i] = byte(r.IntN(256))
 	}
 	copy(img2, img1)
-	for i := 0; i < w*h/20; i++ {
+	for range w * h / 20 {
 		idx := r.IntN(w*h) * 4
 		img2[idx] ^= 0xff
 		img2[idx+1] ^= 0x77

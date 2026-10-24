@@ -20,7 +20,7 @@ func BenchmarkFixtures(b *testing.B) {
 		w, h int
 	}
 	load := func(name string) ([]byte, int, int) {
-		f, err := os.Open("../testutil/data/" + name + ".png")
+		f, err := os.Open("../testutil/testdata/" + name + ".png")
 		if err != nil {
 			b.Fatal(err)
 		}

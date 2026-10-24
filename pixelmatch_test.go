@@ -51,20 +51,20 @@ func TestCompareNoOutput(t *testing.T) {
 func TestCompareDimensionMismatch(t *testing.T) {
 	img1 := image.NewNRGBA(image.Rect(0, 0, 10, 10))
 	img2 := image.NewNRGBA(image.Rect(0, 0, 11, 10))
-	if _, err := Compare(img1, img2); err == nil {
-		t.Error("expected dimension mismatch error")
+	if _, err := Compare(img1, img2); !errors.Is(err, ErrDimensionMismatch) {
+		t.Errorf("got err %v, want %v", err, ErrDimensionMismatch)
 	}
 
 	out := image.NewNRGBA(image.Rect(0, 0, 9, 9))
 	img3 := image.NewNRGBA(image.Rect(0, 0, 10, 10))
-	if _, err := Compare(img1, img3, WithOutput(out)); err == nil {
-		t.Error("expected output dimension mismatch error")
+	if _, err := Compare(img1, img3, WithOutput(out)); !errors.Is(err, ErrOutputDimensionMismatch) {
+		t.Errorf("got err %v, want %v", err, ErrOutputDimensionMismatch)
 	}
 }
 
 func TestCompareNilInputs(t *testing.T) {
-	if _, err := Compare(nil, nil); err == nil {
-		t.Error("expected nil-input error")
+	if _, err := Compare(nil, nil); !errors.Is(err, ErrNilImage) {
+		t.Errorf("got err %v, want %v", err, ErrNilImage)
 	}
 }
 
@@ -349,8 +349,8 @@ func TestCompare(t *testing.T) {
 	} {
 		t.Run(tc.fNamePrefix, func(t *testing.T) {
 
-			pathA := path.Join("internal/testutil/data", tc.fNamePrefix+"_a.png")
-			pathB := path.Join("internal/testutil/data", tc.fNamePrefix+"_b.png")
+			pathA := path.Join("internal/testutil/testdata", tc.fNamePrefix+"_a.png")
+			pathB := path.Join("internal/testutil/testdata", tc.fNamePrefix+"_b.png")
 
 			readpng := func(path string) image.Image {
 
@@ -360,6 +360,7 @@ func TestCompare(t *testing.T) {
 				} else if err != nil {
 					t.Fatalf("open file err: %s", err.Error())
 				}
+				defer f.Close()
 
 				img, err := png.Decode(f)
 				if err != nil {

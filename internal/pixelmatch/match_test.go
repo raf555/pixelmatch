@@ -1,6 +1,7 @@
 package pixelmatch
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/raf555/pixelmatch/v8/internal/testutil"
@@ -208,11 +209,11 @@ func TestDiffMask(t *testing.T) {
 func TestSizeMismatchErrors(t *testing.T) {
 	img1 := make([]byte, 16) // 2x2 RGBA = 16 bytes
 	img2 := make([]byte, 20)
-	if _, err := Match(img1, img2, nil, 2, 2, nil); err == nil {
-		t.Error("expected error on mismatched sizes")
+	if _, err := Match(img1, img2, nil, 2, 2, nil); !errors.Is(err, ErrDataSizeMismatch) {
+		t.Errorf("mismatched sizes: got err %v, want %v", err, ErrDataSizeMismatch)
 	}
-	if _, err := Match(img1, img1, nil, 3, 3, nil); err == nil {
-		t.Error("expected error on width/height mismatch")
+	if _, err := Match(img1, img1, nil, 3, 3, nil); !errors.Is(err, ErrDataSizeMismatch) {
+		t.Errorf("width/height mismatch: got err %v, want %v", err, ErrDataSizeMismatch)
 	}
 }
 

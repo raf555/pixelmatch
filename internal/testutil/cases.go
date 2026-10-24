@@ -10,10 +10,10 @@ import (
 	"image/png"
 )
 
-//go:embed cases.json
+//go:embed testdata/cases.json
 var casesJSON []byte
 
-//go:embed data/cases/*.png
+//go:embed testdata/cases/*.png
 var casesFS embed.FS
 
 type RefCase struct {
@@ -61,7 +61,7 @@ func GetTestCases() ([]RefCase, error) {
 }
 
 func loadCasePNG(name string, w, h int) ([]byte, error) {
-	data, err := casesFS.ReadFile("data/cases/" + name)
+	data, err := casesFS.ReadFile("testdata/cases/" + name)
 	if err != nil {
 		return nil, err
 	}

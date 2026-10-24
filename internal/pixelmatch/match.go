@@ -1,6 +1,9 @@
 package pixelmatch
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"math"
+)
 
 // Options configures a Match call. Use DefaultOptions() to get sensible
 // defaults; the zero value of Options is NOT a useful default.
@@ -490,11 +493,9 @@ func drawGrayPixel(img []byte, i int, alpha float64, output []byte) {
 // becomes 0. Those only occur when Alpha is outside 0..1; upstream wraps
 // them modulo 256 instead.
 func clampUint8(x float64) uint8 {
-	switch {
-	case !(x > 0): // also catches NaN
+	// min and max return NaN for a NaN input, so handle it first.
+	if math.IsNaN(x) {
 		return 0
-	case x >= 255:
-		return 255
 	}
-	return uint8(x)
+	return uint8(min(max(x, 0), 255))
 }
