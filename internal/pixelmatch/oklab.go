@@ -30,7 +30,7 @@ import (
 // single FMA instruction (it does on arm64, ppc64, s390x, riscv64, and amd64
 // with GOAMD64=v3), which skips the intermediate rounding JavaScript
 // performs. Each product that feeds an addition or subtraction in this file,
-// brightnessDelta and drawGrayPixel sits inside an explicit float64(...)
+// brightnessDelta and drawGray sits inside an explicit float64(...)
 // conversion. The spec guarantees that conversion rounds, which blocks
 // fusion. Keep the pattern when you change this arithmetic, or results will
 // differ by architecture.

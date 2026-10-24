@@ -3,6 +3,7 @@
 package pixelmatch
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 )
@@ -121,26 +122,28 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 		return 0, ErrIgnoreMaskSizeMismatch
 	}
 
-	// Fast identical-images check with early exit. Pixels covered by the
-	// ignore mask are treated as matching regardless of their actual bytes.
-	identical := true
+	// Fast identical-images check with early exit. bytes.Equal compares the
+	// whole buffer in SIMD chunks. Pixels covered by the ignore mask are
+	// treated as matching regardless of their actual bytes, so that case
+	// needs a per-pixel loop.
 	pixels := width * height
-	for i := range pixels {
-		if o.IgnoreMask != nil && o.IgnoreMask[i] != 0 {
-			continue
-		}
-		p := i * 4
-		if !equalPixel(img1, img2, p) {
-			identical = false
-			break
+	identical := o.IgnoreMask == nil && bytes.Equal(img1, img2)
+	if o.IgnoreMask != nil {
+		identical = true
+		for i := range pixels {
+			if o.IgnoreMask[i] != 0 {
+				continue
+			}
+			if !equalPixel(img1, img2, i*4) {
+				identical = false
+				break
+			}
 		}
 	}
 
 	if identical {
 		if output != nil && !o.DiffMask {
-			for pos := 0; pos < expected; pos += 4 {
-				drawGrayPixel(img1, pos, o.Alpha, output)
-			}
+			drawGray(img1, output, o.Alpha)
 		}
 		return 0, nil
 	}
@@ -165,12 +168,25 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 	// First and last row holding a counted diff, to bound the window scan.
 	firstDiffY, lastDiffY := -1, 0
 
+	// Fade the whole image up front, then paint diff and AA pixels over it.
+	// One tight loop beats a per-pixel call, since drawGray is too large to
+	// inline.
+	if output != nil && !o.DiffMask {
+		drawGray(img1, output, o.Alpha)
+	}
+
 	cache := oklabCachePool.Get().(*oklabCache)
 	defer oklabCachePool.Put(cache)
 
 	diff := 0
-	pos := 0
-	for i := range pixels {
+	for i := 0; i < pixels; i++ {
+		pos := i * 4
+		// Unchanged pixels need no work at all, so test two at a time.
+		if o.IgnoreMask == nil && i+1 < pixels && binary.LittleEndian.Uint64(img1[pos:pos+8]) == binary.LittleEndian.Uint64(img2[pos:pos+8]) {
+			i++
+			continue
+		}
+
 		// Skip the color math when the 4-byte pixel words are identical, a
 		// common case in screenshot diffs, or when the ignore mask covers
 		// the pixel.
@@ -213,11 +229,7 @@ func Match(img1, img2, output []byte, width, height int, opts *Options) (int, er
 				}
 				diff++
 			}
-		} else if output != nil && !o.DiffMask {
-			drawGrayPixel(img1, pos, o.Alpha, output)
 		}
-
-		pos += 4
 	}
 
 	if mask == nil {
@@ -296,7 +308,10 @@ func maxWindowDiff(mask []uint8, width, height, windowSize, firstDiffY, lastDiff
 }
 
 // equalPixel reports whether the 4-byte RGBA pixel at the same offset in
-// img1 and img2 is identical, in one machine word compare.
+// img1 and img2 is identical. It runs for every pixel, and the two Uint32
+// loads compile to a single inlined compare. bytes.Equal calls
+// runtime.memequal instead and benchmarked 16-40% slower; comparing as
+// [4]byte was 2-3% slower on images that differ.
 func equalPixel(img1, img2 []byte, pos int) bool {
 	return binary.LittleEndian.Uint32(img1[pos:pos+4]) ==
 		binary.LittleEndian.Uint32(img2[pos:pos+4])
@@ -473,21 +488,23 @@ func drawPixel(output []byte, pos int, r, g, b uint8) {
 	output[pos+3] = 255
 }
 
-// drawGrayPixel writes a faded grayscale version of img's pixel at offset i
-// into output.
-func drawGrayPixel(img []byte, i int, alpha float64, output []byte) {
-	r := float64(img[i])
-	g := float64(img[i+1])
-	b := float64(img[i+2])
-	a := float64(img[i+3])
-	// Products are wrapped in float64() to block FMA fusion; see the note at
-	// the top of oklab.go.
-	val := 255 + float64((float64(r*0.29889531)+float64(g*0.58662247)+float64(b*0.11448223)-255)*alpha*a/255)
-	v := clampUint8(val)
-	output[i] = v
-	output[i+1] = v
-	output[i+2] = v
-	output[i+3] = 255
+// drawGray writes a faded grayscale version of every pixel in img into
+// output.
+func drawGray(img, output []byte, alpha float64) {
+	for i := 0; i+4 <= len(img) && i+4 <= len(output); i += 4 {
+		r := float64(img[i])
+		g := float64(img[i+1])
+		b := float64(img[i+2])
+		a := float64(img[i+3])
+		// Products are wrapped in float64() to block FMA fusion; see the
+		// note at the top of oklab.go.
+		val := 255 + float64((float64(r*0.29889531)+float64(g*0.58662247)+float64(b*0.11448223)-255)*alpha*a/255)
+		v := clampUint8(val)
+		output[i] = v
+		output[i+1] = v
+		output[i+2] = v
+		output[i+3] = 255
+	}
 }
 
 // clampUint8 converts x to a byte, truncating toward zero like upstream's
