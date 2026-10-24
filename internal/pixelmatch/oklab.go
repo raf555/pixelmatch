@@ -160,14 +160,9 @@ const (
 )
 
 // oklabCache memoizes each opaque color's cube-rooted LMS values and
-// toe-corrected lightness, like upstream's module-level cache. Rendered
-// images repeat a small set of colors, so most lookups skip three cube roots
-// and a square root.
-//
-// Upstream keeps one cache for the whole process. Match instead takes one
-// from oklabCachePool per call, so concurrent calls never share a cache.
-// Entries depend only on the color, so a cache reused from an earlier call
-// stays valid and needs no clearing.
+// lightness. Unlike upstream's single global cache, each Match call borrows
+// one from oklabCachePool, so concurrent calls never share it. Entries depend
+// only on the color, so a reused cache needs no clearing.
 type oklabCache struct {
 	keys [oklabCacheSize]uint32 // color key + 1, so 0 marks an empty slot
 	vals [oklabCacheSize][4]float64
