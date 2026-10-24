@@ -3,12 +3,11 @@ package pixelmatch
 import (
 	"image"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v8/internal/pixelmatch"
 )
 
 // Option configures a Compare or CompareToImage call.
-// Unspecified options take the package defaults
-// (see [DefaultOptions] for the underlying values).
+// Options you leave out keep their defaults, listed on each With function.
 //
 // Example:
 //
@@ -32,15 +31,16 @@ func defaultConfig() config {
 }
 
 // WithThreshold sets the matching threshold (0..1). Smaller is more
-// sensitive. Default 0.1.
+// sensitive. It is the maximum acceptable OKLab HyAB distance between two
+// colors, where 1.0 is the distance between black and white. Default 0.1.
 func WithThreshold(t float64) Option {
 	return func(c *config) {
 		c.opts.Threshold = t
 	}
 }
 
-// WithIncludeAA, if true, disables anti-aliased pixel detection so AA
-// pixels are counted as real differences. Default false.
+// WithIncludeAA turns off anti-aliased pixel detection when b is true, so
+// Compare counts anti-aliased pixels as differences. Default false.
 func WithIncludeAA(b bool) Option {
 	return func(c *config) {
 		c.opts.IncludeAA = b
@@ -81,9 +81,9 @@ func WithDiffColorAlt(r, g, b uint8) Option {
 	}
 }
 
-// WithDiffMask, if true, draws the diff over a transparent background
-// instead of over the (faded) original image. Anti-aliased pixels are not
-// drawn in mask mode. Default false.
+// WithDiffMask draws the diff over a transparent background instead of the
+// faded original image when b is true. Mask mode leaves anti-aliased pixels
+// undrawn. Default false.
 func WithDiffMask(b bool) Option {
 	return func(c *config) {
 		c.opts.DiffMask = b
@@ -99,13 +99,47 @@ func WithCheckerboard(b bool) Option {
 	}
 }
 
-// WithOutput sets the destination image to which the visual diff will be
-// written. Without this option, Compare only counts mismatched pixels and
-// does not produce a diff image (which is faster).
+// WithWindowSize makes Compare report the largest number of differing
+// pixels found in any n×n window instead of the total across the image.
+// n is clamped to the image dimensions; passing 0 or a negative value
+// restores the default total count.
 //
-// The output's dimensions must match img1 and img2. The most efficient
-// case is an *[image.NRGBA] with a tight stride and zero origin, which is
-// written directly; other layouts go through an internal buffer.
+// Unlike upstream mapbox/pixelmatch, where any finite windowSize (including
+// 0 and negatives) selects a 1×1 window, 0 and negatives here mean "unset".
+// Use n = 1 for a 1×1 window.
+//
+// Speckle from GPU dithering or sub-pixel anti-aliasing spreads out and
+// stays sparse in any one window, while a regression packs its changed
+// pixels together. A density check (result / n² > tau) also compares fairly
+// across image sizes, so you can use a stricter threshold to catch smaller
+// changes without failing on noise.
+//
+// The option changes only the returned count. A requested diff image still
+// marks each differing pixel.
+func WithWindowSize(n int) Option {
+	return func(c *config) {
+		c.opts.WindowSize = n
+	}
+}
+
+// WithIgnoreMask marks pixels to skip from the comparison. The mask is one
+// byte per pixel in row-major order (length must be width*height). Compare
+// treats a pixel with a non-zero mask byte as matching: it leaves the pixel
+// out of the count and draws it in the diff output like an unchanged pixel.
+// Use it for regions that change on their own, such as timestamps or
+// animated UI.
+func WithIgnoreMask(mask []byte) Option {
+	return func(c *config) {
+		c.opts.IgnoreMask = mask
+	}
+}
+
+// WithOutput sets the image Compare writes the visual diff into. Without
+// this option, Compare only counts mismatched pixels, which is faster.
+//
+// The output's dimensions must match img1 and img2. Compare writes straight
+// into an *[image.NRGBA] with a tight stride and zero origin; other layouts
+// go through an internal buffer.
 //
 // To get a freshly allocated diff image without managing the buffer
 // yourself, use CompareToImage instead.

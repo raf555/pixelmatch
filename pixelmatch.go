@@ -8,8 +8,10 @@
 // Original JS implementation: https://github.com/mapbox/pixelmatch.
 //
 // Algorithm references:
-//   - "Measuring perceived color difference using YIQ NTSC transmission color
-//     space in mobile applications" (Kotsarenko & Ramos, 2010).
+//   - "A perceptual color space for image processing" (Ottosson, 2020): the
+//     OKLab color space used for color difference.
+//   - "Distance metrics for very large color differences" (Abasi et al., 2019):
+//     the OKLab HyAB metric used to compare colors.
 //   - "Anti-aliased Pixel and Intensity Slope Detector" (Vyšniauskas, 2009).
 package pixelmatch
 
@@ -18,12 +20,13 @@ import (
 	"image"
 	"image/draw"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v8/internal/pixelmatch"
 )
 
 // Compare compares two images and returns the number of mismatched
 // pixels. By default no diff image is produced; pass [WithOutput] to write
-// a visual diff into a buffer of your choice.
+// a visual diff into a buffer of your choice. Pass [WithWindowSize] to get
+// the densest local diff count instead of the image-wide total.
 //
 // Compare accepts any [image.Image] as input. *[image.NRGBA] goes through a
 // zero-copy fast path; *[image.RGBA] un-premultiplies on the fly; other
@@ -59,9 +62,12 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 			return 0, fmt.Errorf("%w: %dx%d vs %dx%d", ErrOutputDimensionMismatch, ob.Dx(), ob.Dy(), w, h)
 		}
 	}
+	if cfg.opts.IgnoreMask != nil && len(cfg.opts.IgnoreMask) != w*h {
+		return 0, fmt.Errorf("%w: got %d bytes, want %d", ErrIgnoreMaskSizeMismatch, len(cfg.opts.IgnoreMask), w*h)
+	}
 
-	// Materialize inputs as straight-RGBA byte buffers. Fast paths avoid
-	// per-pixel conversion entirely.
+	// Materialize inputs as straight-RGBA byte buffers. The fast paths skip
+	// per-pixel conversion.
 	pix1 := asStraightRGBA(img1)
 	pix2 := asStraightRGBA(img2)
 
@@ -101,8 +107,8 @@ func Compare(img1, img2 image.Image, opts ...Option) (int, error) {
 //	out := image.NewNRGBA(image.Rect(0, 0, w, h))
 //	n, err := Compare(img1, img2, append(opts, WithOutput(out))...)
 //
-// Passing [WithOutput] here is harmless but redundant — [CompareToImage]
-// always returns its own allocated image.
+// Passing [WithOutput] here has no effect: [CompareToImage] replaces it with
+// its own allocated image.
 func CompareToImage(img1, img2 image.Image, opts ...Option) (*image.NRGBA, int, error) {
 	if img1 == nil {
 		return nil, 0, ErrNilImage
@@ -119,18 +125,18 @@ func CompareToImage(img1, img2 image.Image, opts ...Option) (*image.NRGBA, int, 
 
 // asStraightRGBA returns the image's pixels as a tightly-packed
 // width*height*4-byte slice in straight (non-premultiplied) R, G, B, A
-// order — the layout pixelmatch operates on natively.
+// order, the layout pixelmatch works in.
 //
 // Fast paths:
 //   - *image.NRGBA with zero origin and stride == 4*w: returns its Pix
-//     slice directly (no copy, no allocation).
+//     slice (no copy, no allocation).
 //   - *image.NRGBA with other layout: re-packs into a fresh buffer.
 //   - *image.RGBA: un-premultiplies into a fresh buffer.
-//   - everything else: draw.Draw into a temporary NRGBA, which handles
-//     every color model in the stdlib correctly.
+//   - other types: draw.Draw into a temporary NRGBA, which converts the
+//     standard library's color models.
 //
-// Callers must treat the returned buffer as read-only — it may alias the
-// source image.
+// Callers must treat the returned buffer as read-only, since it may alias
+// the source image.
 func asStraightRGBA(img image.Image) []byte {
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
@@ -183,9 +189,8 @@ func asStraightRGBA(img image.Image) []byte {
 		return buf
 
 	default:
-		// Generic path: works for any image.Image — Gray, Paletted,
-		// YCbCr, etc. Per-pixel via draw.Draw, which handles every
-		// stdlib color model correctly.
+		// Generic path for any image.Image (Gray, Paletted, YCbCr, etc.).
+		// draw.Draw converts each pixel from the source color model.
 		tmp := image.NewNRGBA(image.Rect(0, 0, w, h))
 		draw.Draw(tmp, tmp.Bounds(), img, b.Min, draw.Src)
 		return tmp.Pix

@@ -13,4 +13,8 @@ var (
 	// ErrOutputSizeMismatch is returned when the output buffer length does not
 	// match the expected size for the given dimensions.
 	ErrOutputSizeMismatch = errors.New("pixelmatch: output size does not match width/height")
+
+	// ErrIgnoreMaskSizeMismatch is returned when the IgnoreMask length does not
+	// match width*height (one byte per pixel).
+	ErrIgnoreMaskSizeMismatch = errors.New("pixelmatch: ignore mask size does not match width/height")
 )

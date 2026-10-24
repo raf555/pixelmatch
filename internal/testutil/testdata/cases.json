@@ -1,0 +1,261 @@
+[
+    {
+        "name": "big-random",
+        "w": 128,
+        "h": 96,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 771
+    },
+    {
+        "name": "tight",
+        "w": 50,
+        "h": 50,
+        "opts": {
+            "threshold": 0.01
+        },
+        "n": 420
+    },
+    {
+        "name": "loose",
+        "w": 50,
+        "h": 50,
+        "opts": {
+            "threshold": 0.5
+        },
+        "n": 255
+    },
+    {
+        "name": "identical",
+        "w": 30,
+        "h": 30,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 0
+    },
+    {
+        "name": "identical-mask",
+        "w": 30,
+        "h": 30,
+        "opts": {
+            "threshold": 0.1,
+            "diffMask": true
+        },
+        "n": 0
+    },
+    {
+        "name": "alpha-checker",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 1465
+    },
+    {
+        "name": "alpha-white",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1,
+            "checkerboard": false
+        },
+        "n": 1500
+    },
+    {
+        "name": "full-alpha-range",
+        "w": 32,
+        "h": 32,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 882
+    },
+    {
+        "name": "custom-colors",
+        "w": 25,
+        "h": 25,
+        "opts": {
+            "threshold": 0.1,
+            "aaColor": [
+                0,
+                255,
+                255
+            ],
+            "diffColor": [
+                255,
+                0,
+                255
+            ],
+            "diffColorAlt": [
+                128,
+                255,
+                0
+            ],
+            "alpha": 0.5
+        },
+        "n": 73
+    },
+    {
+        "name": "stripes",
+        "w": 60,
+        "h": 60,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 1200
+    },
+    {
+        "name": "1x1-same",
+        "w": 1,
+        "h": 1,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 0
+    },
+    {
+        "name": "1x1-diff",
+        "w": 1,
+        "h": 1,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 1
+    },
+    {
+        "name": "tall-thin",
+        "w": 3,
+        "h": 100,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 42
+    },
+    {
+        "name": "wide-short",
+        "w": 200,
+        "h": 3,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 42
+    },
+    {
+        "name": "near-black-ramp",
+        "w": 32,
+        "h": 64,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true
+        },
+        "n": 475
+    },
+    {
+        "name": "hue-pairs-127",
+        "w": 4,
+        "h": 1,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true
+        },
+        "n": 2
+    },
+    {
+        "name": "opaque-random",
+        "w": 64,
+        "h": 64,
+        "opts": {
+            "threshold": 0.1
+        },
+        "n": 3993
+    },
+    {
+        "name": "window-dense-4",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true,
+            "windowSize": 4
+        },
+        "n": 16
+    },
+    {
+        "name": "window-dense-16",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true,
+            "windowSize": 16
+        },
+        "n": 64
+    },
+    {
+        "name": "window-speckle-4",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true,
+            "windowSize": 4
+        },
+        "n": 2
+    },
+    {
+        "name": "window-clamped",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true,
+            "windowSize": 1000
+        },
+        "n": 64
+    },
+    {
+        "name": "window-one",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.1,
+            "includeAA": true,
+            "windowSize": 1
+        },
+        "n": 1
+    },
+    {
+        "name": "window-with-aa",
+        "w": 48,
+        "h": 48,
+        "opts": {
+            "threshold": 0.05,
+            "windowSize": 8
+        },
+        "n": 25
+    },
+    {
+        "name": "alpha-window-white",
+        "w": 32,
+        "h": 32,
+        "opts": {
+            "threshold": 0.1,
+            "checkerboard": false,
+            "includeAA": true,
+            "windowSize": 6
+        },
+        "n": 36
+    },
+    {
+        "name": "aa-alpha-tiebreak",
+        "w": 40,
+        "h": 40,
+        "opts": {
+            "threshold": 0.02
+        },
+        "n": 556
+    }
+]
