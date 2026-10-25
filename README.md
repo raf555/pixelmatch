@@ -1,113 +1,59 @@
-# pixelmatch
+# pixelmatch (deprecated path)
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/raf555/pixelmatch?status.svg)](https://pkg.go.dev/github.com/raf555/pixelmatch?tab=doc)
 
-A native Go port of [mapbox/pixelmatch](https://github.com/mapbox/pixelmatch)
-— the smallest, simplest, fastest pixel-level image comparison library.
-Pure Go, zero external dependencies, no cgo.
+`github.com/raf555/pixelmatch` moved to
+[`github.com/raf555/pixelmatch/v7`](https://pkg.go.dev/github.com/raf555/pixelmatch/v7),
+so the major version matches upstream
+[mapbox/pixelmatch](https://github.com/mapbox/pixelmatch) 7.2.0. For upstream
+8.x (OKLab + HyAB), use
+[`github.com/raf555/pixelmatch/v8`](https://pkg.go.dev/github.com/raf555/pixelmatch/v8).
 
-Features accurate **anti-aliased pixel detection** and **perceptual color
-difference metrics** (YIQ NTSC color space, per Kotsarenko & Ramos 2010).
+From v1.0.2 on, this package forwards each call to v7. Your code keeps
+compiling, and you get v7's fixes without changing anything.
 
-## Install
-
-```
-go get github.com/raf555/pixelmatch@latest
-```
-
-## Usage
-
-The simplest path — count differing pixels:
-
-```go
-import (
-    "image/png"
-    "os"
-    "github.com/raf555/pixelmatch"
-)
-
-a, _ := png.Decode(fileA)
-b, _ := png.Decode(fileB)
-
-n, err := pixelmatch.Compare(a, b)
-// n = number of mismatched pixels
-```
-
-Add a visual diff with `WithOutput`:
-
-```go
-out := image.NewNRGBA(image.Rect(0, 0, w, h))
-n, err := pixelmatch.Compare(a, b,
-    pixelmatch.WithThreshold(0.1),
-    pixelmatch.WithOutput(out),
-    pixelmatch.WithDiffColor(255, 0, 255),
-)
-// out now contains the visual diff
-_ = png.Encode(file, out)
-```
-
-Or get a freshly allocated diff in one call:
-
-```go
-diff, n, err := pixelmatch.CompareToImage(a, b)
-// diff is a *image.NRGBA
-```
-
-## Options
-
-| Option | Default | Meaning |
-|---|---|---|
-| `WithThreshold(0.1)` | `0.1` | matching threshold (0..1); smaller = more sensitive |
-| `WithIncludeAA(false)` | `false` | if true, count anti-aliased pixels as differences |
-| `WithAlpha(0.1)` | `0.1` | opacity of the original image in the diff output |
-| `WithAAColor(255,255,0)` | yellow | color for AA pixels |
-| `WithDiffColor(255,0,0)` | red | color for diff pixels |
-| `WithDiffColorAlt(r,g,b)` | unset | alt color for darker-in-img2 pixels |
-| `WithDiffMask(false)` | `false` | draw diff over transparent background |
-| `WithCheckerboard(true)` | `true` | blend semi-transparent pixels against checkerboard |
-| `WithOutput(out)` | unset | write visual diff into the given `*image.NRGBA` |
-
-## Image type handling
-
-`Compare` and `CompareToImage` accept any `image.Image`:
-
-- **`*image.NRGBA`** with tight stride and zero origin: **zero-copy** fast
-  path. This is the recommended type — it's the format pixelmatch uses
-  natively (straight, non-premultiplied RGBA).
-- **`*image.RGBA`**: converted by un-premultiplying alpha. ~10% slower.
-- **anything else** (`Gray`, `Paletted`, `YCbCr`, etc.): handled via
-  `draw.Draw` to a temporary NRGBA. Always correct, slower.
-
-## Performance
-
-### Benchmark Results Summary
-
-**Command**
+## Migrating to v7
 
 ```sh
-go test -bench=. -benchmem -count=10 -cpu 1
+go get github.com/raf555/pixelmatch/v7@latest
 ```
 
-**Environment:**
-* **OS/Arch:** linux/amd64
-* **Package:** github.com/raf555/pixelmatch
-* **CPU:** AMD EPYC 9634 84-Core Processor
+```diff
+-import "github.com/raf555/pixelmatch"
++import "github.com/raf555/pixelmatch/v7"
+```
 
-| Benchmark | Time (`sec/op`) | Throughput (`B/s`) | Memory (`B/op`) | Allocations (`allocs/op`) |
-| :--- | :--- | :--- | :--- | :--- |
-| **`CompareNRGBA800x600`** | 16.05ms ± 3% | 228.2MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
-| **`CompareNoOutputNRGBA`** | 9.137ms ± 3% | 400.8MiB ± 3% | 48.00B ± 0% | 1.000 ± 0% |
-| **`CompareRGBA800x600`** | 17.76ms ± 3% | 206.2MiB ± 4% | 3.672MiB ± 0% | 3.000 ± 0% |
+The API matches v1 exactly. `Option` is the same type in both packages, and
+the error variables hold the same values, so `errors.Is` matches across them.
+You can migrate one file at a time.
 
-*p.s. that 1 allocation comes from the options handling.*
+## Changelog
 
-## Correctness
+<details>
+<summary><b>v1.0.2</b></summary>
 
-The port is verified byte-for-byte against the reference JavaScript
-implementation across 14 test cases covering random images, gradient edges,
-semi-transparency (both checkerboard and white-background modes), diff
-masks, custom colors, stripe patterns, single-pixel images, and degenerate
-aspect ratios. See the test files.
+- Deprecates this module path in favor of `github.com/raf555/pixelmatch/v7`.
+- Each function, option and error now forwards to v7.0.0. Results stay the
+  same on amd64. On arm64, rare pixels near the threshold may change, because
+  v7 stops Go from fusing multiply-adds and now matches upstream.
+
+</details>
+
+<details>
+<summary><b>v1.0.1</b> (2026-05-17)</summary>
+
+- Reordered the internal `Options` fields to shrink the struct.
+- Added tests and README updates.
+
+</details>
+
+<details>
+<summary><b>v1.0.0</b> (2026-05-15)</summary>
+
+- First release: a Go port of mapbox/pixelmatch 7.2.0 with the YIQ color
+  metric.
+
+</details>
 
 ## License
 

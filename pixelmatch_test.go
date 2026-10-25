@@ -2,385 +2,148 @@ package pixelmatch
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"image"
-	"image/color"
-	"image/png"
-	"os"
-	"path"
 	"testing"
 
-	"github.com/raf555/pixelmatch/internal/testutil"
+	v7 "github.com/raf555/pixelmatch/v7"
 )
 
-func TestCompareIdentical(t *testing.T) {
-	w, h := 16, 16
-	pix := testutil.MakeRGBA(w, h, func(x, y int) (uint8, uint8, uint8, uint8) {
-		return uint8(x * 16), uint8(y * 16), 100, 255
-	})
-	img1 := testutil.BytesToNRGBA(pix, w, h)
-	img2 := testutil.BytesToNRGBA(pix, w, h)
-	out := image.NewNRGBA(image.Rect(0, 0, w, h))
-
-	n, err := Compare(img1, img2, WithOutput(out))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Errorf("got %d, want 0", n)
-	}
-}
-
-func TestCompareNoOutput(t *testing.T) {
-	w, h := 8, 8
-	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	// Make img2 fully white, img1 fully zero — every pixel should differ.
-	for i := range img2.Pix {
-		img2.Pix[i] = 255
-	}
-	n, err := Compare(img1, img2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != w*h {
-		t.Errorf("got %d, want %d", n, w*h)
-	}
-}
-
-func TestCompareDimensionMismatch(t *testing.T) {
-	img1 := image.NewNRGBA(image.Rect(0, 0, 10, 10))
-	img2 := image.NewNRGBA(image.Rect(0, 0, 11, 10))
-	if _, err := Compare(img1, img2); err == nil {
-		t.Error("expected dimension mismatch error")
-	}
-
-	out := image.NewNRGBA(image.Rect(0, 0, 9, 9))
-	img3 := image.NewNRGBA(image.Rect(0, 0, 10, 10))
-	if _, err := Compare(img1, img3, WithOutput(out)); err == nil {
-		t.Error("expected output dimension mismatch error")
-	}
-}
-
-func TestCompareNilInputs(t *testing.T) {
-	if _, err := Compare(nil, nil); err == nil {
-		t.Error("expected nil-input error")
-	}
-}
-
-func TestCompareToImageReturnsDiff(t *testing.T) {
-	w, h := 4, 4
-	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for i := range img1.Pix {
-		img1.Pix[i] = 0
-	}
-	for i := range img2.Pix {
-		img2.Pix[i] = 200
-	}
-	diff, n, err := CompareToImage(img1, img2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if diff == nil {
-		t.Fatal("diff is nil")
-	}
-	if n != w*h {
-		t.Errorf("got %d diffs, want %d", n, w*h)
-	}
-	if diff.Bounds().Dx() != w || diff.Bounds().Dy() != h {
-		t.Errorf("wrong diff bounds: %v", diff.Bounds())
-	}
-}
-
-func TestFunctionalOptions(t *testing.T) {
-	w, h := 4, 4
-	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for i := range img1.Pix {
-		img1.Pix[i] = 100
-	}
-	for i := range img2.Pix {
-		img2.Pix[i] = 105 // very small difference
-	}
-
-	// Loose threshold → no diffs.
-	n, err := Compare(img1, img2, WithThreshold(0.5))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Errorf("loose: got %d, want 0", n)
-	}
-
-	// Tight threshold → all pixels diff.
-	n, err = Compare(img1, img2, WithThreshold(0.0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != w*h {
-		t.Errorf("tight: got %d, want %d", n, w*h)
-	}
-}
-
-func TestWithDiffColorAlt(t *testing.T) {
-	w, h := 2, 1
-	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	// Pixel 0: img1 light, img2 dark → img2 darker → alt color.
-	img1.Set(0, 0, color.NRGBA{240, 240, 240, 255})
-	img2.Set(0, 0, color.NRGBA{20, 20, 20, 255})
-	// Pixel 1: img1 dark, img2 light → img2 lighter → diff color.
-	img1.Set(1, 0, color.NRGBA{20, 20, 20, 255})
-	img2.Set(1, 0, color.NRGBA{240, 240, 240, 255})
-
-	diff, _, err := CompareToImage(img1, img2,
-		WithDiffColor(255, 0, 0),
-		WithDiffColorAlt(0, 0, 255),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	p0 := diff.NRGBAAt(0, 0)
-	if p0.R != 0 || p0.G != 0 || p0.B != 255 {
-		t.Errorf("pixel 0: expected blue (alt), got %v", p0)
-	}
-	p1 := diff.NRGBAAt(1, 0)
-	if p1.R != 255 || p1.G != 0 || p1.B != 0 {
-		t.Errorf("pixel 1: expected red, got %v", p1)
-	}
-}
-
-// TestAsStraightRGBAFastPath verifies that NRGBA inputs with the standard
-// layout don't trigger a copy.
-func TestAsStraightRGBAFastPath(t *testing.T) {
-	img := image.NewNRGBA(image.Rect(0, 0, 10, 10))
-	for i := range img.Pix {
-		img.Pix[i] = byte(i)
-	}
-	pix := asStraightRGBA(img)
-	// Aliasing test: modify the source, verify the returned slice sees it.
-	img.Pix[0] = 99
-	if pix[0] != 99 {
-		t.Error("expected fast path to alias source NRGBA")
-	}
-}
-
-// TestAsStraightRGBAFromRGBA verifies premultiplied → straight conversion.
-func TestAsStraightRGBAFromRGBA(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
-	// In premultiplied space: 50% red on 50% alpha → R=128, A=128 stored.
-	img.Set(0, 0, color.RGBA{128, 0, 0, 128})
-	pix := asStraightRGBA(img)
-	// After un-premultiply, R should be ~255 (full red at 50% alpha).
-	// (128 * 255 / 128 = 255, exact).
-	if pix[0] != 255 {
-		t.Errorf("expected R=255 after un-premultiply, got %d", pix[0])
-	}
-	if pix[3] != 128 {
-		t.Errorf("expected A=128 unchanged, got %d", pix[3])
-	}
-}
-
-// TestAsStraightRGBAFromOther verifies the generic fallback (Gray here).
-func TestAsStraightRGBAFromGray(t *testing.T) {
-	img := image.NewGray(image.Rect(0, 0, 2, 1))
-	img.SetGray(0, 0, color.Gray{Y: 0})   // black
-	img.SetGray(1, 0, color.Gray{Y: 255}) // white
-	pix := asStraightRGBA(img)
-	if len(pix) != 8 {
-		t.Fatalf("wrong length: %d", len(pix))
-	}
-	// First pixel: black opaque.
-	if pix[0] != 0 || pix[1] != 0 || pix[2] != 0 || pix[3] != 255 {
-		t.Errorf("pixel 0: got [%d %d %d %d]", pix[0], pix[1], pix[2], pix[3])
-	}
-	// Second pixel: white opaque.
-	if pix[4] != 255 || pix[5] != 255 || pix[6] != 255 || pix[7] != 255 {
-		t.Errorf("pixel 1: got [%d %d %d %d]", pix[4], pix[5], pix[6], pix[7])
-	}
-}
-
-// TestCompareWithNonTightOutput verifies that an NRGBA with a non-zero
-// origin or non-tight stride still gets the right diff written to it.
-func TestCompareWithNonTightOutput(t *testing.T) {
-	w, h := 8, 8
-	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for i := range img2.Pix {
-		img2.Pix[i] = 255 // all-white img2 vs all-zero img1
-	}
-
-	// Output with origin at (5, 5).
-	bigOut := image.NewNRGBA(image.Rect(5, 5, 5+w, 5+h))
-	n, err := Compare(img1, img2, WithOutput(bigOut))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != w*h {
-		t.Errorf("got %d, want %d", n, w*h)
-	}
-	// Check the first diff pixel at the output's origin (5,5).
-	p := bigOut.NRGBAAt(5, 5)
-	if p.R != 255 || p.G != 0 || p.B != 0 || p.A != 255 {
-		t.Errorf("expected red diff at origin, got %v", p)
-	}
-}
-
-// TestCompareCrossValidatesAgainstByteAPI compares the high-level
-// image.Image API against the low-level byte API for the JS reference
-// cases, ensuring no precision loss in the wrapping.
-func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
-	cases, err := testutil.GetTestCases()
-	if err != nil {
-		t.Fatalf("read cases: %s", err.Error())
-	}
-
-	for _, c := range cases {
-		t.Run(c.Name, func(t *testing.T) {
-			img1Pix, _ := base64.StdEncoding.DecodeString(c.Img1)
-			img2Pix, _ := base64.StdEncoding.DecodeString(c.Img2)
-
-			// Build opts the same way the byte test does.
-			var opts []Option
-			if c.Opts.Threshold != nil {
-				opts = append(opts, WithThreshold(*c.Opts.Threshold))
+// testImages returns two 32×32 images with gradients, a semi-transparent
+// band and a shifted edge, so every option changes the result.
+func testImages() (a, b *image.NRGBA) {
+	const size = 32
+	a = image.NewNRGBA(image.Rect(0, 0, size, size))
+	b = image.NewNRGBA(image.Rect(0, 0, size, size))
+	for y := range size {
+		for x := range size {
+			i := a.PixOffset(x, y)
+			alpha := uint8(255)
+			if y >= 24 {
+				alpha = uint8(64 + x*4)
 			}
-			if c.Opts.IncludeAA != nil {
-				opts = append(opts, WithIncludeAA(*c.Opts.IncludeAA))
+			copy(a.Pix[i:], []byte{uint8(x * 8), uint8(y * 8), 128, alpha})
+			copy(b.Pix[i:], a.Pix[i:i+4])
+			if x > 16 {
+				copy(b.Pix[i:], []byte{20, 20, 20, alpha})
 			}
-			if c.Opts.Alpha != nil {
-				opts = append(opts, WithAlpha(*c.Opts.Alpha))
+			if x == y {
+				copy(b.Pix[i:], []byte{255, 255, 255, 255})
 			}
-			if c.Opts.DiffMask != nil {
-				opts = append(opts, WithDiffMask(*c.Opts.DiffMask))
-			}
-			if c.Opts.Checkerboard != nil {
-				opts = append(opts, WithCheckerboard(*c.Opts.Checkerboard))
-			}
-			if c.Opts.DiffColor != nil {
-				opts = append(opts, WithDiffColor(
-					uint8((*c.Opts.DiffColor)[0]),
-					uint8((*c.Opts.DiffColor)[1]),
-					uint8((*c.Opts.DiffColor)[2]),
-				))
-			}
-			if c.Opts.DiffColorAlt != nil {
-				opts = append(opts, WithDiffColorAlt(
-					uint8((*c.Opts.DiffColorAlt)[0]),
-					uint8((*c.Opts.DiffColorAlt)[1]),
-					uint8((*c.Opts.DiffColorAlt)[2]),
-				))
-			}
-			if c.Opts.AAColor != nil {
-				opts = append(opts, WithAAColor(
-					uint8((*c.Opts.AAColor)[0]),
-					uint8((*c.Opts.AAColor)[1]),
-					uint8((*c.Opts.AAColor)[2]),
-				))
-			}
+		}
+	}
+	return a, b
+}
 
-			img1 := testutil.BytesToNRGBA(img1Pix, c.W, c.H)
-			img2 := testutil.BytesToNRGBA(img2Pix, c.W, c.H)
-			diff, n, err := CompareToImage(img1, img2, opts...)
+func TestForwardsToV7(t *testing.T) {
+	a, b := testImages()
+
+	tests := []struct {
+		name string
+		v1   []Option
+		v7   []v7.Option
+	}{
+		{"defaults", nil, nil},
+		{"threshold", []Option{WithThreshold(0.01)}, []v7.Option{v7.WithThreshold(0.01)}},
+		{"include AA", []Option{WithIncludeAA(true)}, []v7.Option{v7.WithIncludeAA(true)}},
+		{"alpha", []Option{WithAlpha(0.7)}, []v7.Option{v7.WithAlpha(0.7)}},
+		{"AA color", []Option{WithAAColor(0, 192, 0)}, []v7.Option{v7.WithAAColor(0, 192, 0)}},
+		{"diff color", []Option{WithDiffColor(255, 0, 255)}, []v7.Option{v7.WithDiffColor(255, 0, 255)}},
+		{"diff color alt", []Option{WithDiffColorAlt(0, 255, 0)}, []v7.Option{v7.WithDiffColorAlt(0, 255, 0)}},
+		{"diff mask", []Option{WithDiffMask(true)}, []v7.Option{v7.WithDiffMask(true)}},
+		{"no checkerboard", []Option{WithCheckerboard(false)}, []v7.Option{v7.WithCheckerboard(false)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wantDiff, wantN, err := v7.CompareToImage(a, b, tt.v7...)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if n != c.N {
-				t.Errorf("diff count: got %d, want %d", n, c.N)
+
+			gotDiff, gotN, err := CompareToImage(a, b, tt.v1...)
+			if err != nil {
+				t.Fatal(err)
 			}
-			wantDiff, _ := base64.StdEncoding.DecodeString(c.Diff)
-			if !bytes.Equal(diff.Pix, wantDiff) {
-				t.Errorf("diff buffer differs from JS reference")
+			if gotN != wantN {
+				t.Errorf("CompareToImage: n = %d, want %d", gotN, wantN)
+			}
+			if !bytes.Equal(gotDiff.Pix, wantDiff.Pix) {
+				t.Error("CompareToImage: diff image differs from v7")
+			}
+
+			out := image.NewNRGBA(a.Bounds())
+			n, err := Compare(a, b, append(tt.v1, WithOutput(out))...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != wantN {
+				t.Errorf("Compare: n = %d, want %d", n, wantN)
+			}
+			if !bytes.Equal(out.Pix, wantDiff.Pix) {
+				t.Error("Compare with WithOutput: diff image differs from v7")
 			}
 		})
 	}
 }
 
-// TestRoundTripPNG sanity-checks that decoded PNGs go through Compare
-// correctly.
-func TestRoundTripPNG(t *testing.T) {
-	w, h := 8, 8
-	src := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for y := range h {
-		for x := range w {
-			src.Set(x, y, color.NRGBA{uint8(x * 32), uint8(y * 32), 128, 255})
-		}
-	}
-	// Encode and re-decode.
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, src); err != nil {
-		t.Fatal(err)
-	}
-	decoded, err := png.Decode(&buf)
+func TestOptionsMixWithV7(t *testing.T) {
+	a, b := testImages()
+	want, err := v7.Compare(a, b, v7.WithThreshold(0.01), v7.WithIncludeAA(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Decoded is *image.RGBA (since src is opaque). Compare against the
-	// original NRGBA — there should be zero differences.
-	n, err := Compare(src, decoded)
+	got, err := Compare(a, b, WithThreshold(0.01), v7.WithIncludeAA(true))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 0 {
-		t.Errorf("round-trip lost pixels: %d diffs", n)
+	if got != want {
+		t.Errorf("n = %d, want %d", got, want)
 	}
 }
 
-func TestCompare(t *testing.T) {
-	type testcase struct {
-		fNamePrefix string
-		shouldMatch bool
+func TestErrorsMatchV7(t *testing.T) {
+	small := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	large := image.NewNRGBA(image.Rect(0, 0, 3, 3))
+	empty := image.NewNRGBA(image.Rect(0, 0, 0, 0))
+
+	tests := []struct {
+		name  string
+		run   func() error
+		v1Err error
+		v7Err error
+	}{
+		{
+			name:  "nil image",
+			run:   func() error { _, err := Compare(nil, small); return err },
+			v1Err: ErrNilImage, v7Err: v7.ErrNilImage,
+		},
+		{
+			name:  "dimension mismatch",
+			run:   func() error { _, err := Compare(small, large); return err },
+			v1Err: ErrDimensionMismatch, v7Err: v7.ErrDimensionMismatch,
+		},
+		{
+			name: "output dimension mismatch",
+			run: func() error {
+				_, err := Compare(small, small, WithOutput(large))
+				return err
+			},
+			v1Err: ErrOutputDimensionMismatch, v7Err: v7.ErrOutputDimensionMismatch,
+		},
+		{
+			name:  "invalid dimensions",
+			run:   func() error { _, err := Compare(empty, empty); return err },
+			v1Err: ErrInvalidDimensions, v7Err: v7.ErrInvalidDimensions,
+		},
 	}
-
-	for _, tc := range []testcase{
-		// orisano's fork testdata
-		// https://github.com/orisano/pixelmatch/blob/master/pixelmatch_test.go
-		{"01_matching", true},
-		{"02_nonmatching", false},
-		{"03_nonmatching_strideskip", false},
-	} {
-		t.Run(tc.fNamePrefix, func(t *testing.T) {
-
-			pathA := path.Join("internal/testutil/data", tc.fNamePrefix+"_a.png")
-			pathB := path.Join("internal/testutil/data", tc.fNamePrefix+"_b.png")
-
-			readpng := func(path string) image.Image {
-
-				f, err := os.Open(path)
-				if errors.Is(err, os.ErrNotExist) {
-					t.Fatalf("%s does not exist, please create it for this test to run: %v", path, err)
-				} else if err != nil {
-					t.Fatalf("open file err: %s", err.Error())
-				}
-
-				img, err := png.Decode(f)
-				if err != nil {
-					t.Fatalf("decode file err: %s", err.Error())
-				}
-
-				return img
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run()
+			if !errors.Is(err, tt.v1Err) {
+				t.Errorf("got err %v, want %v", err, tt.v1Err)
 			}
-
-			imgA := readpng(pathA)
-			imgB := readpng(pathB)
-
-			res, err := Compare(imgA, imgB)
-			if err != nil {
-				t.Fatalf("compare err: %s", err.Error())
-			}
-
-			if tc.shouldMatch {
-				if res != 0 {
-					t.Errorf("should have been 0 diff, but was %d", res)
-				}
-			} else {
-				if res == 0 {
-					t.Errorf("should have been >0 diff, but was %d", res)
-				}
+			if !errors.Is(err, tt.v7Err) {
+				t.Errorf("got err %v, want v7's %v", err, tt.v7Err)
 			}
 		})
 	}
