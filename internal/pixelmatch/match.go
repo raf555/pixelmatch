@@ -1,3 +1,5 @@
+// Package pixelmatch implements the comparison on raw RGBA byte slices. The
+// public package wraps it with an image.Image API and functional options.
 package pixelmatch
 
 import (
@@ -248,6 +250,12 @@ func hasManySiblings(img []byte, x1, y1, width, height int) bool {
 	return false
 }
 
+// The Go spec lets the compiler fuse x*y + z into one FMA instruction, and
+// it does on arm64. JavaScript never fuses, so each product that feeds an
+// add or subtract below sits inside an explicit float64(...) conversion,
+// which forces rounding and blocks fusion. Keep the pattern when you change
+// this arithmetic, or arm64 results drift from upstream.
+
 // colorDelta returns the signed squared YIQ perceptual color distance
 // between img1[k..k+4] and img2[m..m+4]. The sign encodes whether the img2
 // pixel is darker (positive) or lighter (negative) than img1.
@@ -275,16 +283,16 @@ func colorDelta(img1, img2 []byte, k, m int, checkerboard bool) float64 {
 		if checkerboard {
 			rb, gb, bb = checkerboardBackground(k)
 		}
-		dr = (r1*a1 - r2*a2 - rb*da) / 255
-		dg = (g1*a1 - g2*a2 - gb*da) / 255
-		db = (b1*a1 - b2*a2 - bb*da) / 255
+		dr = (float64(r1*a1) - float64(r2*a2) - float64(rb*da)) / 255
+		dg = (float64(g1*a1) - float64(g2*a2) - float64(gb*da)) / 255
+		db = (float64(b1*a1) - float64(b2*a2) - float64(bb*da)) / 255
 	}
 
-	y := dr*0.29889531 + dg*0.58662247 + db*0.11448223
-	i := dr*0.59597799 - dg*0.27417610 - db*0.32180189
-	q := dr*0.21147017 - dg*0.52261711 + db*0.31114694
+	y := float64(dr*0.29889531) + float64(dg*0.58662247) + float64(db*0.11448223)
+	i := float64(dr*0.59597799) - float64(dg*0.27417610) - float64(db*0.32180189)
+	q := float64(dr*0.21147017) - float64(dg*0.52261711) + float64(db*0.31114694)
 
-	delta := 0.5053*y*y + 0.299*i*i + 0.1957*q*q
+	delta := float64(0.5053*y*y) + float64(0.299*i*i) + float64(0.1957*q*q)
 
 	if y > 0 {
 		return -delta
@@ -319,12 +327,12 @@ func brightnessDelta(img []byte, k, m int, r1b, g1b, b1b, a1b uint8, checkerboar
 		if checkerboard {
 			rb, gb, bb = checkerboardBackground(k)
 		}
-		dr = (r1*a1 - r2*a2 - rb*da) / 255
-		dg = (g1*a1 - g2*a2 - gb*da) / 255
-		db = (b1*a1 - b2*a2 - bb*da) / 255
+		dr = (float64(r1*a1) - float64(r2*a2) - float64(rb*da)) / 255
+		dg = (float64(g1*a1) - float64(g2*a2) - float64(gb*da)) / 255
+		db = (float64(b1*a1) - float64(b2*a2) - float64(bb*da)) / 255
 	}
 
-	return dr*0.29889531 + dg*0.58662247 + db*0.11448223
+	return float64(dr*0.29889531) + float64(dg*0.58662247) + float64(db*0.11448223)
 }
 
 // checkerboardBackground returns the RGB background color for a
@@ -332,10 +340,10 @@ func brightnessDelta(img []byte, k, m int, r1b, g1b, b1b, a1b uint8, checkerboar
 // Each channel is either 48 or 207, producing a tri-tone
 // noisy background that breaks alpha symmetries.
 func checkerboardBackground(k int) (rb, gb, bb float64) {
-	rb = 48 + 159*float64(k%2)
+	rb = 48 + float64(159*float64(k%2))
 	// `(k / 1.618...) | 0` in JS truncates toward zero (works because k≥0).
-	gb = 48 + 159*float64(int(float64(k)/1.618033988749895)%2)
-	bb = 48 + 159*float64(int(float64(k)/2.618033988749895)%2)
+	gb = 48 + float64(159*float64(int(float64(k)/1.618033988749895)%2))
+	bb = 48 + float64(159*float64(int(float64(k)/2.618033988749895)%2))
 	return
 }
 
@@ -356,7 +364,7 @@ func drawGrayPixel(img []byte, i int, alpha float64, output []byte) {
 	g := float64(img[i+1])
 	b := float64(img[i+2])
 	a := float64(img[i+3])
-	val := 255 + (r*0.29889531+g*0.58662247+b*0.11448223-255)*alpha*a/255
+	val := 255 + (float64(r*0.29889531)+float64(g*0.58662247)+float64(b*0.11448223)-255)*alpha*a/255
 	v := toUint8(val)
 	output[i] = v
 	output[i+1] = v
