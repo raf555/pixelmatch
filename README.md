@@ -16,10 +16,11 @@ difference** in the OKLab color space (Ottosson 2020) with the HyAB metric
 go get github.com/raf555/pixelmatch/v8@latest
 ```
 
-To stay on the previous YIQ-based major, keep the old import path
-(`github.com/raf555/pixelmatch`) and pin a `v1.x` tag. You can import both
-versions in the same program. See the [migration guide](#migration-guide)
-when you're ready to move.
+To stay on the previous YIQ-based major (upstream 7.2.0), use
+[`github.com/raf555/pixelmatch/v7`](https://pkg.go.dev/github.com/raf555/pixelmatch/v7).
+The old `github.com/raf555/pixelmatch` path (v1.x) is deprecated and forwards
+to v7. You can import v7 and v8 in the same program. See the
+[migration guide](#migration-guide) when you're ready to move.
 
 ## Usage
 
@@ -161,11 +162,11 @@ suite. It differs from the JavaScript version in these places:
 ## Migration guide
 
 <details>
-<summary><b>Upgrading from v1.x (upstream 7.2.0) to v8</b></summary>
+<summary><b>Upgrading from v1.x or v7 (upstream 7.2.0) to v8</b></summary>
 
 v8 tracks upstream mapbox/pixelmatch 8.0.0, which swaps the YIQ color metric
-for OKLab + HyAB. If you aren't ready to migrate, v1.x stays at the old
-import path.
+for OKLab + HyAB. If you aren't ready to migrate, stay on
+`github.com/raf555/pixelmatch/v7`.
 
 **1. Update the import path**
 
