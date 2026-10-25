@@ -3,7 +3,7 @@ package pixelmatch
 import (
 	"errors"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v7/internal/pixelmatch"
 )
 
 var (

@@ -3,7 +3,7 @@ package pixelmatch
 import (
 	"testing"
 
-	"github.com/raf555/pixelmatch/internal/testutil"
+	"github.com/raf555/pixelmatch/v7/internal/testutil"
 )
 
 // Low-level byte API benchmarks.

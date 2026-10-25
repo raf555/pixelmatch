@@ -18,7 +18,7 @@ import (
 	"image"
 	"image/draw"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v7/internal/pixelmatch"
 )
 
 // Compare compares two images and returns the number of mismatched

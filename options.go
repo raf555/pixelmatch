@@ -3,7 +3,7 @@ package pixelmatch
 import (
 	"image"
 
-	"github.com/raf555/pixelmatch/internal/pixelmatch"
+	"github.com/raf555/pixelmatch/v7/internal/pixelmatch"
 )
 
 // Option configures a Compare or CompareToImage call.

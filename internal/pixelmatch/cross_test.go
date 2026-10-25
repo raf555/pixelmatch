@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/raf555/pixelmatch/internal/testutil"
+	"github.com/raf555/pixelmatch/v7/internal/testutil"
 )
 
 func toU8(rgb *[3]int) [3]uint8 {
