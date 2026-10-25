@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - misspell
+    - modernize
+    - nolintlint
+    - revive
+    - thelper
+    - unparam
+    - usestdlibvars
+  # Don't enable unconvert: the float64(...) wrappers in the color math look
+  # redundant but stop the compiler from fusing multiply-adds (see match.go).
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

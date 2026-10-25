@@ -96,19 +96,37 @@ The single allocation comes from option handling.
 
 ## Correctness
 
-The tests check output byte for byte against the reference JavaScript
-implementation across 14 cases: random images, gradient edges,
-semi-transparency over checkerboard and white, diff masks, custom colors,
-stripes, single-pixel images and extreme aspect ratios.
+The tests replay 18 cases generated from upstream's JavaScript
+(`internal/testutil/gen/generate.mjs`) and the upstream 7.2.0 PNG fixtures,
+checking diff counts and diff images byte for byte. The cases cover random
+images, gradient edges, semi-transparency over checkerboard and white, diff
+masks, custom colors, stripes, single-pixel images and extreme aspect ratios.
+
+CI runs the suite on Linux, macOS (arm64) and Windows, and again on amd64
+with FMA instructions enabled (`GOAMD64=v3`).
 
 ## Changelog
 
 <details>
 <summary><b>v7.0.0</b>: tracks upstream mapbox/pixelmatch 7.2.0</summary>
 
+**Breaking**
+
 - The module path moves from `github.com/raf555/pixelmatch` to
   `github.com/raf555/pixelmatch/v7`, so the major version matches upstream.
-  The code is the same as v1.0.1.
+
+**Fixed**
+
+- The color math blocks FMA fusion, so arm64 (Apple Silicon included)
+  produces the same results as amd64 and upstream. Before, Go fused
+  multiply-adds on arm64 and rounding could differ.
+
+**Internal**
+
+- Tests replay 18 cases generated from upstream 7.2.0's JavaScript and the
+  upstream fixtures, checking output byte for byte. Fixture diffs now get a
+  byte-equality check on top of the count.
+- CI runs lint and tests on Linux, macOS and Windows.
 
 </details>
 
@@ -141,7 +159,8 @@ go get github.com/raf555/pixelmatch/v7@latest
 +import "github.com/raf555/pixelmatch/v7"
 ```
 
-Diff counts and diff images stay identical.
+Diff counts and diff images stay identical on amd64. On arm64, rare pixels
+near the threshold may change, now matching upstream.
 
 ## License
 

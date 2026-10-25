@@ -2,7 +2,6 @@ package pixelmatch
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"image"
 	"image/color"
@@ -36,7 +35,7 @@ func TestCompareNoOutput(t *testing.T) {
 	w, h := 8, 8
 	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
 	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	// Make img2 fully white, img1 fully zero — every pixel should differ.
+	// Make img2 white and img1 zero, so each pixel differs.
 	for i := range img2.Pix {
 		img2.Pix[i] = 255
 	}
@@ -52,20 +51,20 @@ func TestCompareNoOutput(t *testing.T) {
 func TestCompareDimensionMismatch(t *testing.T) {
 	img1 := image.NewNRGBA(image.Rect(0, 0, 10, 10))
 	img2 := image.NewNRGBA(image.Rect(0, 0, 11, 10))
-	if _, err := Compare(img1, img2); err == nil {
-		t.Error("expected dimension mismatch error")
+	if _, err := Compare(img1, img2); !errors.Is(err, ErrDimensionMismatch) {
+		t.Errorf("got err %v, want %v", err, ErrDimensionMismatch)
 	}
 
 	out := image.NewNRGBA(image.Rect(0, 0, 9, 9))
 	img3 := image.NewNRGBA(image.Rect(0, 0, 10, 10))
-	if _, err := Compare(img1, img3, WithOutput(out)); err == nil {
-		t.Error("expected output dimension mismatch error")
+	if _, err := Compare(img1, img3, WithOutput(out)); !errors.Is(err, ErrOutputDimensionMismatch) {
+		t.Errorf("got err %v, want %v", err, ErrOutputDimensionMismatch)
 	}
 }
 
 func TestCompareNilInputs(t *testing.T) {
-	if _, err := Compare(nil, nil); err == nil {
-		t.Error("expected nil-input error")
+	if _, err := Compare(nil, nil); !errors.Is(err, ErrNilImage) {
+		t.Errorf("got err %v, want %v", err, ErrNilImage)
 	}
 }
 
@@ -73,11 +72,15 @@ func TestCompareToImageReturnsDiff(t *testing.T) {
 	w, h := 4, 4
 	img1 := image.NewNRGBA(image.Rect(0, 0, w, h))
 	img2 := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for i := range img1.Pix {
-		img1.Pix[i] = 0
-	}
-	for i := range img2.Pix {
-		img2.Pix[i] = 200
+	// Opaque black vs opaque white: unambiguous diffs independent of the
+	// checkerboard background, so this smoke test stays stable regardless
+	// of the hash used for semi-transparent blending.
+	for i := 0; i < len(img1.Pix); i += 4 {
+		img1.Pix[i+3] = 255
+		img2.Pix[i] = 255
+		img2.Pix[i+1] = 255
+		img2.Pix[i+2] = 255
+		img2.Pix[i+3] = 255
 	}
 	diff, n, err := CompareToImage(img1, img2)
 	if err != nil {
@@ -240,8 +243,7 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			img1Pix, _ := base64.StdEncoding.DecodeString(c.Img1)
-			img2Pix, _ := base64.StdEncoding.DecodeString(c.Img2)
+			img1Pix, img2Pix := c.Img1, c.Img2
 
 			// Build opts the same way the byte test does.
 			var opts []Option
@@ -262,23 +264,23 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 			}
 			if c.Opts.DiffColor != nil {
 				opts = append(opts, WithDiffColor(
-					uint8((*c.Opts.DiffColor)[0]),
-					uint8((*c.Opts.DiffColor)[1]),
-					uint8((*c.Opts.DiffColor)[2]),
+					uint8(c.Opts.DiffColor[0]),
+					uint8(c.Opts.DiffColor[1]),
+					uint8(c.Opts.DiffColor[2]),
 				))
 			}
 			if c.Opts.DiffColorAlt != nil {
 				opts = append(opts, WithDiffColorAlt(
-					uint8((*c.Opts.DiffColorAlt)[0]),
-					uint8((*c.Opts.DiffColorAlt)[1]),
-					uint8((*c.Opts.DiffColorAlt)[2]),
+					uint8(c.Opts.DiffColorAlt[0]),
+					uint8(c.Opts.DiffColorAlt[1]),
+					uint8(c.Opts.DiffColorAlt[2]),
 				))
 			}
 			if c.Opts.AAColor != nil {
 				opts = append(opts, WithAAColor(
-					uint8((*c.Opts.AAColor)[0]),
-					uint8((*c.Opts.AAColor)[1]),
-					uint8((*c.Opts.AAColor)[2]),
+					uint8(c.Opts.AAColor[0]),
+					uint8(c.Opts.AAColor[1]),
+					uint8(c.Opts.AAColor[2]),
 				))
 			}
 
@@ -291,8 +293,7 @@ func TestCompareCrossValidatesAgainstByteAPI(t *testing.T) {
 			if n != c.N {
 				t.Errorf("diff count: got %d, want %d", n, c.N)
 			}
-			wantDiff, _ := base64.StdEncoding.DecodeString(c.Diff)
-			if !bytes.Equal(diff.Pix, wantDiff) {
+			if !bytes.Equal(diff.Pix, c.Diff) {
 				t.Errorf("diff buffer differs from JS reference")
 			}
 		})
@@ -320,7 +321,7 @@ func TestRoundTripPNG(t *testing.T) {
 	}
 
 	// Decoded is *image.RGBA (since src is opaque). Compare against the
-	// original NRGBA — there should be zero differences.
+	// original NRGBA, so there should be zero differences.
 	n, err := Compare(src, decoded)
 	if err != nil {
 		t.Fatal(err)
@@ -345,19 +346,19 @@ func TestCompare(t *testing.T) {
 	} {
 		t.Run(tc.fNamePrefix, func(t *testing.T) {
 
-			pathA := path.Join("internal/testutil/data", tc.fNamePrefix+"_a.png")
-			pathB := path.Join("internal/testutil/data", tc.fNamePrefix+"_b.png")
+			pathA := path.Join("internal/testutil/testdata", tc.fNamePrefix+"_a.png")
+			pathB := path.Join("internal/testutil/testdata", tc.fNamePrefix+"_b.png")
 
 			readpng := func(path string) image.Image {
 
-				f, err := os.Open(path)
+				data, err := os.ReadFile(path)
 				if errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("%s does not exist, please create it for this test to run: %v", path, err)
 				} else if err != nil {
-					t.Fatalf("open file err: %s", err.Error())
+					t.Fatalf("read file err: %s", err.Error())
 				}
 
-				img, err := png.Decode(f)
+				img, err := png.Decode(bytes.NewReader(data))
 				if err != nil {
 					t.Fatalf("decode file err: %s", err.Error())
 				}

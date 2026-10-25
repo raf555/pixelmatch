@@ -9,6 +9,17 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+
   test:
     strategy:
       fail-fast: false
@@ -16,6 +27,8 @@ jobs:
         include:
           - os: ubuntu-latest
             race: -race
+          # Apple Silicon runner: checks that arm64, where Go may fuse
+          # multiply-adds, produces the same bytes as amd64.
           - os: macos-latest
             race: -race
           # The race detector needs cgo, which Windows runners don't set up.
